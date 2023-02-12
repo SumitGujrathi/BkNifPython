@@ -44,18 +44,18 @@ def Pull_Chain_Data(Symbol):
                             'Chrome/80.0.3987.149 Safari/537.36',
             'accept-language': 'en,gu;q=0.9,hi;q=0.8', 'accept-encoding': 'gzip, deflate, br'}
     session = requests.Session()
-    request = session.get(url, headers=headers)
-    time.sleep(1)
-    cookies = dict(request.cookies)
+#     request = session.get(url, headers=headers)
+#     time.sleep(1)
+#     cookies = dict(request.cookies)
 
     # print(response.status_code)
     # DATA = response.content
 
     # list of item to be data framed => 1 = 'expiryDates' , 2 = 'data' , 3 = 'underlyingValue' , 4 = 'strikePrices'
+    DATA = session.get(url, headers=headers)
 
-    DATA = session.get(url, headers=headers, cookies=cookies).json()['records']['data']
-    
-    time.sleep(1)
+#     DATA = session.get(url, headers=headers, cookies=cookies).json()['records']['data']
+    time.sleep(1)    
 
     Cols = ['PE.underlyingValue','expiryDate','PE.openInterest','PE.changeinOpenInterest','PE.impliedVolatility','PE.lastPrice','PE.totalBuyQuantity','PE.totalSellQuantity','strikePrice','CE.totalSellQuantity','CE.totalBuyQuantity','CE.lastPrice','CE.impliedVolatility','CE.changeinOpenInterest','CE.openInterest']
 

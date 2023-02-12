@@ -131,13 +131,13 @@ print(cur_time)
 
 # Start Time Setting
 
-Start_time = '10:05:00' # time on web 09:17:00 in india
+Start_time = '10:30:00' # time on web 09:17:00 in india
 Start_time = datetime.strptime(Start_time, '%H:%M:%S').time()
 
 
 # Stop Time Setting 
 
-Stop_time = '10:30:00'   # time on web 15:28:00 in india
+Stop_time = '11:30:00'   # time on web 15:28:00 in india
 Stop_time = datetime.strptime(Stop_time, '%H:%M:%S').time()
 
 
@@ -169,8 +169,8 @@ while restart:
                 # Main Script here below =>
 
 
-                Pull_Chain_Data("NIFTY")
-#                 Pull_Chain_Data("BANKNIFTY")
+#                 Pull_Chain_Data("NIFTY")
+                Pull_Chain_Data("BANKNIFTY")
 
 
 

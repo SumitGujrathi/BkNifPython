@@ -4,7 +4,6 @@ import requests
 import pandas as pd
 import numpy as np
 import pymongo
-from decouple import config
 
 
 # List of Holidays Important *** Date formate should be like MM-DD-YYYY eg. 01-01-2023****
@@ -29,25 +28,10 @@ OffDates = ["01-26-2023","03-07-2023","03-30-2023","04-04-2023","04-07-2023","04
 # NSE Data Pull + Data Clearing + MongoDB Funciton
 
 
-# SECRET_KEY = config("SECRET_KEY")
 
 
 def Pull_Chain_Data(Symbol):
 
-    # MongoDB Connection
-    # SECRET_KEY = config("SECRET_KEY")
-
-    Dataset_Name = "NSE"
-    Collection = Symbol
-
-    linkMD = f"mongodb+srv://sumitgujrathi24:8lpVTDIBtyHKWRH3@sumit.ybjewjm.mongodb.net/{Dataset_Name}?retryWrites=true&w=majority"
-#     linkMD = SECRET_KEY
-
-    Client = pymongo.MongoClient(linkMD, 27017)
-
-    db = Client[Dataset_Name]
-
-    DATA_NSE = db[Collection]
 
 
     # NSE live data Option Chain Nifty
@@ -61,6 +45,7 @@ def Pull_Chain_Data(Symbol):
             'accept-language': 'en,gu;q=0.9,hi;q=0.8', 'accept-encoding': 'gzip, deflate, br'}
     session = requests.Session()
     request = session.get(url, headers=headers)
+    time.sleep(1)
     cookies = dict(request.cookies)
 
     # print(response.status_code)
@@ -68,65 +53,82 @@ def Pull_Chain_Data(Symbol):
 
     # list of item to be data framed => 1 = 'expiryDates' , 2 = 'data' , 3 = 'underlyingValue' , 4 = 'strikePrices'
 
-    try:
-        DATA = session.get(url, headers=headers, timeout=0.5, cookies=cookies).json()['records']['data']
+    DATA = session.get(url, headers=headers, cookies=cookies).json()['records']['data']
+    
+    time.sleep(1)
 
-        Cols = ['PE.underlyingValue','expiryDate','PE.openInterest','PE.changeinOpenInterest','PE.impliedVolatility','PE.lastPrice','PE.totalBuyQuantity','PE.totalSellQuantity','strikePrice','CE.totalSellQuantity','CE.totalBuyQuantity','CE.lastPrice','CE.impliedVolatility','CE.changeinOpenInterest','CE.openInterest']
+    Cols = ['PE.underlyingValue','expiryDate','PE.openInterest','PE.changeinOpenInterest','PE.impliedVolatility','PE.lastPrice','PE.totalBuyQuantity','PE.totalSellQuantity','strikePrice','CE.totalSellQuantity','CE.totalBuyQuantity','CE.lastPrice','CE.impliedVolatility','CE.changeinOpenInterest','CE.openInterest']
 
-        df = pd.json_normalize(DATA)
+    df = pd.json_normalize(DATA)
 
-        df = df.fillna(0)
+    df = df.fillna(0)
 
-        df = df[Cols]
+    df = df[Cols]
 
-        # Output Data
+    # Output Data
 
-        PE_OI = df['PE.openInterest'].sum()
-        PE_COI =  df['PE.changeinOpenInterest'].sum()
-        PE_Volat =  np.round(df['PE.impliedVolatility'].mean(),2)
+    PE_OI = df['PE.openInterest'].sum()
+    PE_COI =  df['PE.changeinOpenInterest'].sum()
+    PE_Volat =  np.round(df['PE.impliedVolatility'].mean(),2)
 
-        CE_OI = df['CE.openInterest'].sum()
-        CE_COI = df['CE.changeinOpenInterest'].sum()
-        CE_Volat = np.round(df['CE.impliedVolatility'].mean(),2)
+    CE_OI = df['CE.openInterest'].sum()
+    CE_COI = df['CE.changeinOpenInterest'].sum()
+    CE_Volat = np.round(df['CE.impliedVolatility'].mean(),2)
 
-        NIFTY = df['PE.underlyingValue'].max()
-        PCR = np.round(((PE_COI / CE_COI) -1),2)
+    NIFTY = df['PE.underlyingValue'].max()
+    PCR = np.round(((PE_COI / CE_COI) -1),2)
 
-        # Date  format => YYYY,MM,DD, HH,MM,SS
-        Pull_Time = datetime.now()
-        OI = {"Date":Pull_Time, "PE_OI":PE_OI,"CE_OI":CE_OI, "PE_COI":PE_COI, "CE_COI":CE_COI, "NIFTY":NIFTY, "PCR":PCR, "PE_Volatility": PE_Volat, "CE_Volatility": CE_Volat}
+    # Date  format => YYYY,MM,DD, HH,MM,SS
+    Pull_Time = datetime.now()
+    OI = {"Date":Pull_Time, "PE_OI":PE_OI,"CE_OI":CE_OI, "PE_COI":PE_COI, "CE_COI":CE_COI, "NIFTY":NIFTY, "PCR":PCR, "PE_Volatility": PE_Volat, "CE_Volatility": CE_Volat}
 
-        DATA_NSE.insert_one(OI)
+    
+    # MongoDB Connection
+    # SECRET_KEY = config("SECRET_KEY")
 
-        print(OI)
+    Dataset_Name = "NSE"
+    Collection = Symbol
+
+    linkMD = f"mongodb+srv://sumitgujrathi24:8lpVTDIBtyHKWRH3@sumit.ybjewjm.mongodb.net/{Dataset_Name}?retryWrites=true&w=majority"
+
+    Client = pymongo.MongoClient(linkMD, 27017)
+    time.sleep(1)
+
+    db = Client[Dataset_Name]
+
+    DATA_NSE = db[Collection]
+    
+    
+
+    DATA_NSE.insert_one(OI)
+
+#     print(OI)
 
 
 
-        # OI Data & save to CSV file
+    # OI Data & save to CSV file
 
-        # OI_DATA.to_csv(f'{path}\\OPTION_OI_DATA.csv', mode='a', index=False, header=False)
+    # OI_DATA.to_csv(f'{path}\\OPTION_OI_DATA.csv', mode='a', index=False, header=False)
 
-    except:
-        pass
 
 
 # Date Setting 
 
 Today_Date = datetime.now().strftime('%m-%d-%Y')
-print(Today_Date)
+# print(Today_Date)
 
 
 # On_Day = Today_Date in OffDates # If False Market is On.
 On_Day = Today_Date in OffDates
 
-print(On_Day)
+# print(On_Day)
 
 
 # Start Time Setting 
 
 cur_time = datetime.now().strftime('%H:%M:%S')
 cur_time = datetime.strptime(cur_time, '%H:%M:%S').time()
-print(cur_time)
+# print(cur_time)
 
 
 # Start Time Setting
@@ -137,7 +139,7 @@ Start_time = datetime.strptime(Start_time, '%H:%M:%S').time()
 
 # Stop Time Setting 
 
-Stop_time = '20:30:00'   # time on web 15:28:00 in india
+Stop_time = '23:30:00'   # time on web 15:28:00 in india
 Stop_time = datetime.strptime(Stop_time, '%H:%M:%S').time()
 
 
@@ -169,7 +171,6 @@ while restart:
                 # Main Script here below =>
 
 
-#                 Pull_Chain_Data("NIFTY")
                 Pull_Chain_Data("BANKNIFTY")
 
 
@@ -178,7 +179,7 @@ while restart:
                 # <= Main Script End =>
                 print(cur_time)
                 print("Pulling")
-                time.sleep(240)
+                time.sleep(300)
                 
             else:
                 # Current Time Setting

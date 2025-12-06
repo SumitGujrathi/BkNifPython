@@ -7,75 +7,94 @@ import time
 app = Flask(__name__)
 
 # ------------------------
-# Yahoo Finance symbols
+# NSE symbols
 # ------------------------
 SYMBOLS = [
-    ("NIFTY 50", "^NSEI"),
-    ("NIFTY BANK", "^NSEBANK"),
-    ("ACC", "ACC.NS"),
-    ("ADANIPORTS", "ADANIPORTS.NS"),
-    ("SBIN", "SBIN.NS"),
-    ("AMBUJACEM", "AMBUJACEM.NS"),
-    ("WIPRO", "WIPRO.NS"),
-    ("APOLLOTYRE", "APOLLOTYRE.NS"),
-    ("ASIANPAINT", "ASIANPAINT.NS"),
-    ("AUROPHARMA", "AUROPHARMA.NS"),
-    ("AXISBANK", "AXISBANK.NS"),
-    ("BAJFINANCE", "BAJFINANCE.NS"),
-    ("IOC", "IOC.NS"),
-    ("BANKBARODA", "BANKBARODA.NS"),
-    ("BATAINDIA", "BATAINDIA.NS"),
-    ("BERGEPAINT", "BERGEPAINT.NS"),
-    ("BHARATFORG", "BHARATFORG.NS"),
-    ("COALINDIA", "COALINDIA.NS"),
-    ("INDUSINDBK", "INDUSINDBK.NS"),
-    ("DRREDDY", "DRREDDY.NS"),
-    ("INFY", "INFY.NS"),
-    ("JSWSTEEL", "JSWSTEEL.NS"),
-    ("POWERGRID", "POWERGRID.NS"),
-    ("LICHSGFIN", "LICHSGFIN.NS"),
-    ("CANBK", "CANBK.NS"),
-    ("MGL", "MGL.NS"),
-    ("M&MFIN", "M&MFIN.NS"),
-    ("HDFCBANK", "HDFCBANK.NS"),
-    ("MANAPPURAM", "MANAPPURAM.NS"),
-    ("MARICO", "MARICO.NS"),
-    ("SUNTV", "SUNTV.NS"),
-    ("HINDZINC", "HINDZINC.NS"),
-    ("ICICIBANK", "ICICIBANK.NS"),
-    ("ZEEL", "ZEEL.NS")
+    "ACC","ADANIPORTS","SBIN","AMBUJACEM","WIPRO","APOLLOTYRE","ASIANPAINT",
+    "AUROPHARMA","AXISBANK","BAJFINANCE","IOC","BANKBARODA","BATAINDIA",
+    "BERGEPAINT","BHARATFORG","COALINDIA","INDUSINDBK","DRREDDY","INFY",
+    "JSWSTEEL","POWERGRID","LICHSGFIN","CANBK","MGL","M&MFIN","HDFCBANK",
+    "MANAPPURAM","MARICO","SUNTV","HINDZINC","ICICIBANK","ZEEL"
 ]
 
+# Indices
+INDICES = ["NIFTY 50", "NIFTY BANK"]
+
 # ------------------------
-# In-memory cache
+# NSE session for cookies
+# ------------------------
+session = requests.Session()
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Origin": "https://www.nseindia.com",
+    "Referer": "https://www.nseindia.com/",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# ------------------------
+# Cache to store latest data
 # ------------------------
 CACHE = {}
 CACHE_LOCK = threading.Lock()
 
 # ------------------------
-# Fetch stock/index from Yahoo Finance
+# Initialize NSE session
 # ------------------------
-def fetch_yahoo(symbol):
+def init_nse():
     try:
-        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
-        r = requests.get(url, timeout=10)
+        session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
+    except:
+        pass
+
+# ------------------------
+# Fetch NIFTY indices
+# ------------------------
+def fetch_indices():
+    try:
+        url = "https://www.nseindia.com/api/allIndices"
+        r = session.get(url, headers=HEADERS, timeout=10)
         data = r.json()
-        result = data.get("quoteResponse", {}).get("result", [])
-        if not result:
-            return CACHE.get(symbol, {"symbol": symbol,"ltp":"—","open":"—","high":"—",
-                                      "low":"—","prev_close":"—","volume":"—","change":"—"})
-        quote = result[0]
-        ltp = quote.get("regularMarketPrice") or 0
-        prev_close = quote.get("regularMarketPreviousClose") or 0
-        change = round(ltp - prev_close, 2) if ltp and prev_close else "—"
+        indices_data = {}
+        for idx in data["data"]:
+            if idx["index"] in INDICES:
+                indices_data[idx["index"]] = {
+                    "symbol": idx["index"],
+                    "ltp": idx.get("last", "—"),
+                    "open": idx.get("open", "—"),
+                    "high": idx.get("high", "—"),
+                    "low": idx.get("low", "—"),
+                    "prev_close": idx.get("previousClose", "—"),
+                    "volume": idx.get("tradedVolume", "—"),
+                    "change": idx.get("variation", "—")
+                }
+        return indices_data
+    except:
+        # fallback to cache
+        return {idx: CACHE.get(idx, {}) for idx in INDICES}
+
+# ------------------------
+# Fetch individual stock
+# ------------------------
+def fetch_stock(symbol):
+    try:
+        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        r = session.get(url, headers=HEADERS, timeout=10)
+        data = r.json()
+        price = data.get("priceInfo", {})
+        sec = data.get("securityInfo", {})
+        ltp = price.get("lastPrice") or "—"
+        prev_close = price.get("previousClose") or "—"
+        change = round(float(ltp)-float(prev_close),2) if ltp != "—" and prev_close != "—" else "—"
         return {
-            "symbol": quote.get("shortName", symbol),
-            "ltp": ltp or "—",
-            "open": quote.get("regularMarketOpen") or "—",
-            "high": quote.get("regularMarketDayHigh") or "—",
-            "low": quote.get("regularMarketDayLow") or "—",
-            "prev_close": prev_close or "—",
-            "volume": quote.get("regularMarketVolume") or "—",
+            "symbol": symbol,
+            "ltp": ltp,
+            "open": price.get("open","—"),
+            "high": price.get("intraDayHighLow",{}).get("max","—"),
+            "low": price.get("intraDayHighLow",{}).get("min","—"),
+            "prev_close": prev_close,
+            "volume": sec.get("totalTradedVolume","—"),
             "change": change
         }
     except:
@@ -83,18 +102,24 @@ def fetch_yahoo(symbol):
                                   "low":"—","prev_close":"—","volume":"—","change":"—"})
 
 # ------------------------
-# Background thread to update cache
+# Background fetch thread
 # ------------------------
 def background_fetch():
+    init_nse()
     while True:
         results = {}
-        for name, symbol in SYMBOLS:
-            results[symbol] = fetch_yahoo(symbol)
+        # Fetch indices
+        indices_data = fetch_indices()
+        results.update(indices_data)
+        # Fetch stocks
+        for sym in SYMBOLS:
+            results[sym] = fetch_stock(sym)
             time.sleep(0.3)  # prevent throttling
+        # Update cache
         with CACHE_LOCK:
             CACHE.clear()
             CACHE.update(results)
-        time.sleep(30)  # refresh every 30 seconds
+        time.sleep(30)  # refresh every 30 sec
 
 threading.Thread(target=background_fetch, daemon=True).start()
 
@@ -154,4 +179,3 @@ def index():
 # ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-        

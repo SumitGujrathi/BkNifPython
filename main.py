@@ -99,7 +99,7 @@ def index():
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NSE Live Dashboard - Auto Refresh 60s</title>
+    <title>NSE Live Dashboard by Sumit Gujrathi- Auto Refresh 60s</title>
     <meta http-equiv="refresh" content="60">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NSE Live Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>NSE Live Quotes <span id="last-update">{{ last_update }}</span></h1>
+        <table id="stock-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th><th>LTP</th><th>Open</th><th>High</th><th>Low</th>
+                    <th>Prev Close</th><th>Volume</th><th>Change</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                <tr>
+                    <td>{{ row.symbol }}</td>
+                    <td class="ltp">{{ "%.2f"|format(row.ltp) }}</td>
+                    <td>{{ "%.2f"|format(row.open) }}</td>
+                    <td>{{ "%.2f"|format(row.high) }}</td>
+                    <td>{{ "%.2f"|format(row.low) }}</td>
+                    <td>{{ "%.2f"|format(row.prev_close) }}</td>
+                    <td class="volume">{{ "{:,}"|format(row.volume) }}</td>
+                    <td class="{% if row.change >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ "%.2f"|format(row.change) }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="footer">Auto-refresh every 60s | NSE Market Hours: 9:15 AM - 3:30 PM IST</div>
+    </div>
+
+    <script>
+        function refreshData() {
+            fetch('/').then(r => r.text()).then(html => {
+                document.body.innerHTML = html;
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata'}) + ' IST';
+            });
+        }
+        setInterval(refreshData, 60000); // 60 seconds
+    </script>
+</body>
+</html>

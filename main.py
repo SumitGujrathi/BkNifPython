@@ -1,6 +1,5 @@
 from flask import Flask, render_template
 import yfinance as yf
-import pandas as pd
 import time
 from datetime import datetime
 
@@ -9,12 +8,8 @@ app = Flask(__name__)
 symbols = [
     "^NSEI", "^NSEBANK", "ACC.NS", "ADANIPORTS.NS", "SBIN.NS", "AMBUJACEM.NS",
     "WIPRO.NS", "APOLLOTYRE.NS", "ASIANPAINT.NS", "AUROPHARMA.NS",
-    "AXISBANK.NS", "BAJFINANCE.NS", "IOC.NS", "BANKBARODA.NS",
-    "BATAINDIA.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "COALINDIA.NS",
-    "INDUSINDBK.NS", "DRREDDY.NS", "INFY.NS", "JSWSTEEL.NS",
-    "POWERGRID.NS", "LICHSGFIN.NS", "CANBK.NS", "MGL.NS",
-    "M&MFIN.NS", "HDFCBANK.NS", "MANAPPURAM.NS", "MARICO.NS",
-    "SUNTV.NS", "HINDZINC.NS", "ICICIBANK.NS", "ZEEL.NS"
+    "AXISBANK.NS", "BAJFINANCE.NS", "IOC.NS", "BANKBARODA.NS"
+    # Add more during testing
 ]
 
 def fetch_data():
@@ -23,8 +18,8 @@ def fetch_data():
         try:
             ticker = yf.Ticker(symbol)
             info = ticker.info
-            hist = ticker.history(period="1d", interval="1m")
-            if not hist.empty:
+            hist = ticker.history(period="1d", interval="5m")
+            if not hist.empty and len(hist) > 0:
                 latest = hist.iloc[-1]
                 data.append({
                     'symbol': symbol.replace('.NS', '').replace('^NSEI', 'NIFTY_50').replace('^NSEBANK', 'NIFTY_BANK'),
@@ -33,12 +28,12 @@ def fetch_data():
                     'high': round(latest.get('High', 0), 2),
                     'low': round(latest.get('Low', 0), 2),
                     'prev_close': round(info.get('previousClose', 0), 2),
-                    'volume': int(latest.get('Volume', 0)),
-                    'change': round(latest.get('Close', 0) - info.get('previousClose', 0), 2)
+                    'volume': int(latest.get('Volume', 0))
                 })
-        except:
+        except Exception as e:
+            print(f"Error {symbol}: {e}")
             continue
-    return pd.DataFrame(data).to_dict('records')
+    return data
 
 @app.route('/')
 def index():

@@ -4,7 +4,8 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# All Yahoo symbols in one list (FAST API)
+YAHOO_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
+
 symbols = [
     "^NSEI", "^NSEBANK",
     "SBIN.NS", "HDFCBANK.NS", "ICICIBANK.NS",
@@ -12,10 +13,9 @@ symbols = [
     "LT.NS", "BHARTIARTL.NS"
 ]
 
-# Mapping for display
 display_map = {
-    "^NSEI": "NIFTY_50",
-    "^NSEBANK": "NIFTY_BANK",
+    "^NSEI": "NIFTY 50",
+    "^NSEBANK": "BANKNIFTY",
     "SBIN.NS": "SBIN",
     "HDFCBANK.NS": "HDFCBANK",
     "ICICIBANK.NS": "ICICIBANK",
@@ -26,20 +26,30 @@ display_map = {
     "BHARTIARTL.NS": "BHARTIARTL"
 }
 
-def fetch_live_nse_data():
-    url = "https://query1.finance.yahoo.com/v7/finance/quote"
-    params = {"symbols": ",".join(symbols)}
-    headers = {"User-Agent": "Mozilla/5.0"}
+# Required headers to bypass Yahoo blocks
+headers = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)",
+    "Accept": "application/json, text/plain, */*",
+    "Connection": "keep-alive"
+}
 
+def fetch_yahoo_data():
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=10)
+        session = requests.Session()
+        session.headers.update(headers)
+
+        # Yahoo requires initial cookie request
+        session.get("https://query1.finance.yahoo.com", timeout=8)
+
+        params = {"symbols": ",".join(symbols)}
+        r = session.get(YAHOO_URL, params=params, timeout=10)
         result = r.json()["quoteResponse"]["result"]
 
-        live_data = []
+        final = []
 
         for item in result:
             sym = item["symbol"]
-            live_data.append({
+            final.append({
                 "symbol": display_map.get(sym, sym),
                 "ltp": item.get("regularMarketPrice", 0),
                 "open": item.get("regularMarketOpen", 0),
@@ -53,39 +63,40 @@ def fetch_live_nse_data():
                 )
             })
 
-        return live_data
+        return final
 
     except Exception as e:
-        print("ERROR FETCHING DATA →", e)
+        print("Yahoo Fetch Error:", e)
         return []
 
 
 @app.route("/")
 def home():
-    data = fetch_live_nse_data()
+    data = fetch_yahoo_data()
     timestamp = datetime.now().strftime("%H:%M:%S")
 
-    # If no data comes, show text (debug)
     if not data:
-        return "<h1 style='color:white;background:black'>No data received. Yahoo API blocked or error.</h1>"
+        return "<h1>No data received — Yahoo blocked or unreachable.</h1>"
 
     html = f"""
     <html>
     <head>
-        <title>NSE LIVE by Sumit Gujrathi</title>
+        <title>NSE LIVE (Sumit Gujrathi)</title>
         <meta http-equiv="refresh" content="60">
         <style>
             body {{ background:#111; color:white; font-family:Arial; padding:20px; }}
             table {{ width:100%; border-collapse:collapse; }}
             th {{ background:#00d4ff; color:black; padding:12px; }}
             td {{ padding:10px; border-bottom:1px solid #333; }}
-            .positive {{ color:#00ff88; }}
-            .negative {{ color:#ff4444; }}
+            .pos {{ color:#00ff88; }}
+            .neg {{ color:#ff4444; }}
         </style>
     </head>
+
     <body>
-        <h1>NSE LIVE QUOTES</h1>
+        <h1>NSE LIVE — Yahoo Finance</h1>
         <p>Updated: {timestamp}</p>
+
         <table>
             <tr>
                 <th>Symbol</th>
@@ -100,8 +111,8 @@ def home():
     """
 
     for row in data:
-        cls = "positive" if row["change"] >= 0 else "negative"
-        volume = f"{row['volume']:,}" if row["volume"] else "—"
+        cls = "pos" if row["change"] >= 0 else "neg"
+        vol = f"{row['volume']:,}" if row["volume"] else "—"
 
         html += f"""
             <tr>
@@ -111,17 +122,12 @@ def home():
                 <td>{row['high']}</td>
                 <td>{row['low']}</td>
                 <td>{row['prev_close']}</td>
-                <td>{volume}</td>
+                <td>{vol}</td>
                 <td class='{cls}'>{row['change']}</td>
             </tr>
         """
 
-    html += """
-        </table>
-    </body>
-    </html>
-    """
-
+    html += "</table></body></html>"
     return html
 
 

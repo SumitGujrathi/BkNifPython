@@ -1,12 +1,10 @@
 from flask import Flask
 import requests
 from datetime import datetime
+import time
 
 app = Flask(__name__)
 
-# ------------------------
-# NSE symbols (indices + stocks)
-# ------------------------
 SYMBOLS = [
     ("NIFTY 50", "NIFTY 50"),
     ("NIFTY BANK", "NIFTY BANK"),
@@ -44,34 +42,24 @@ SYMBOLS = [
     ("ZEEL", "ZEEL")
 ]
 
-# ------------------------
-# NSE session + headers
-# ------------------------
 session = requests.Session()
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0",
     "Accept": "*/*",
     "Origin": "https://www.nseindia.com",
     "Referer": "https://www.nseindia.com/",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# ------------------------
-# Initialize NSE session (fetch cookies)
-# ------------------------
 def init_nse():
+    """Initialize NSE session to get cookies."""
     try:
         session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
     except:
         pass
 
-# ------------------------
-# Fetch stock or index data
-# ------------------------
 def fetch_stock(symbol):
     """Fetch stock or index data from NSE API."""
-
-    # Handle indices differently
     if symbol in ["NIFTY 50", "NIFTY BANK"]:
         url = f"https://www.nseindia.com/api/equity-stockIndices?index={symbol.replace(' ', '%20')}"
     else:
@@ -81,7 +69,6 @@ def fetch_stock(symbol):
         r = session.get(url, headers=HEADERS, timeout=10)
         data = r.json()
 
-        # Index structure
         if symbol in ["NIFTY 50", "NIFTY BANK"]:
             idx = data["data"][0]
             return {
@@ -109,19 +96,21 @@ def fetch_stock(symbol):
         }
 
     except:
-        return {
-            "symbol": symbol, "ltp": "—", "open": "—", "high": "—",
-            "low": "—", "prev_close": "—", "volume": "—", "change": "—"
-        }
+        return {"symbol": symbol, "ltp": "—", "open": "—", "high": "—",
+                "low": "—", "prev_close": "—", "volume": "—", "change": "—"}
 
-# ------------------------
-# Flask route for webpage
-# ------------------------
 @app.route("/")
 def index():
-    init_nse()  # initialize cookies
+    init_nse()  # initialize NSE cookies
 
-    results = [fetch_stock(symbol) for name, symbol in SYMBOLS]
+    # ------------------------
+    # ✅ Fetch all stock data first
+    # ------------------------
+    results = []
+    for name, symbol in SYMBOLS:
+        results.append(fetch_stock(symbol))
+        time.sleep(0.2)  # small delay to prevent NSE throttling
+
     timestamp = datetime.now().strftime("%H:%M:%S")
 
     html = f"""
@@ -157,6 +146,9 @@ def index():
             </tr>
     """
 
+    # ------------------------
+    # ✅ Render all data after fetching
+    # ------------------------
     for row in results:
         cls = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
         html += f"""
@@ -176,8 +168,6 @@ def index():
 
     return html
 
-# ------------------------
-# Run Flask app
-# ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+        

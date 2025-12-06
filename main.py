@@ -1,11 +1,12 @@
 from flask import Flask
 import requests
 from datetime import datetime
-import json
 
 app = Flask(__name__)
 
-# NSE symbols
+# ------------------------
+# NSE symbols (indices + stocks)
+# ------------------------
 SYMBOLS = [
     ("NIFTY 50", "NIFTY 50"),
     ("NIFTY BANK", "NIFTY BANK"),
@@ -43,10 +44,10 @@ SYMBOLS = [
     ("ZEEL", "ZEEL")
 ]
 
-
-# Start a session for NSE
+# ------------------------
+# NSE session + headers
+# ------------------------
 session = requests.Session()
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "*/*",
@@ -55,18 +56,24 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+# ------------------------
+# Initialize NSE session (fetch cookies)
+# ------------------------
 def init_nse():
-    """Initialize NSE session to get cookies."""
     try:
         session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
     except:
         pass
 
-
+# ------------------------
+# Fetch stock or index data
+# ------------------------
 def fetch_stock(symbol):
-    """Fetch stock quote from NSE API."""
-    if ( symbol== "NIFTY 50" || symbol == "NIFTY BANK"):
-        url = f"https://www.nseindia.com/api/equity-stockIndices?index={symbol}"
+    """Fetch stock or index data from NSE API."""
+
+    # Handle indices differently
+    if symbol in ["NIFTY 50", "NIFTY BANK"]:
+        url = f"https://www.nseindia.com/api/equity-stockIndices?index={symbol.replace(' ', '%20')}"
     else:
         url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
 
@@ -74,8 +81,22 @@ def fetch_stock(symbol):
         r = session.get(url, headers=HEADERS, timeout=10)
         data = r.json()
 
-        p = data["priceInfo"]
+        # Index structure
+        if symbol in ["NIFTY 50", "NIFTY BANK"]:
+            idx = data["data"][0]
+            return {
+                "symbol": symbol,
+                "ltp": idx.get("last", "—"),
+                "open": idx.get("open", "—"),
+                "high": idx.get("high", "—"),
+                "low": idx.get("low", "—"),
+                "prev_close": idx.get("previousClose", "—"),
+                "volume": idx.get("tradedVolume", "—"),
+                "change": idx.get("variation", "—"),
+            }
 
+        # Stock structure
+        p = data["priceInfo"]
         return {
             "symbol": symbol,
             "ltp": p.get("lastPrice", "—"),
@@ -86,53 +107,21 @@ def fetch_stock(symbol):
             "volume": data.get("securityInfo", {}).get("totalTradedVolume", "—"),
             "change": p.get("change", "—"),
         }
-    except Exception as e:
-        return { "symbol": symbol, "ltp": "—", "open": "—", "high": "—",
-                 "low": "—", "prev_close": "—", "volume": "—", "change": "—" }
-
-
-def fetch_index(index):
-    """Fetch NIFTY 50 / NIFTY BANK index data."""
-    url = "https://www.nseindia.com/api/allIndices"
-
-    try:
-        r = session.get(url, headers=HEADERS, timeout=10)
-        data = r.json()
-
-        for idx in data["data"]:
-            if idx["index"] == index:
-                return {
-                    "symbol": index,
-                    "ltp": idx["last"],
-                    "open": idx["open"],
-                    "high": idx["high"],
-                    "low": idx["low"],
-                    "prev_close": idx["previousClose"],
-                    "volume": idx["tradedVolume"],
-                    "change": idx["variation"],
-                }
 
     except:
-        pass
+        return {
+            "symbol": symbol, "ltp": "—", "open": "—", "high": "—",
+            "low": "—", "prev_close": "—", "volume": "—", "change": "—"
+        }
 
-    return {
-        "symbol": index, "ltp": "—", "open": "—", "high": "—",
-        "low": "—", "prev_close": "—", "volume": "—", "change": "—"
-    }
-
-
+# ------------------------
+# Flask route for webpage
+# ------------------------
 @app.route("/")
 def index():
-    # Important! Must initialize NSE cookies first
-    init_nse()
+    init_nse()  # initialize cookies
 
-    results = []
-    for name, symbol in SYMBOLS:
-        if symbol in ["NIFTY 50", "NIFTY BANK"]:
-            results.append(fetch_index(symbol))
-        else:
-            results.append(fetch_stock(symbol))
-
+    results = [fetch_stock(symbol) for name, symbol in SYMBOLS]
     timestamp = datetime.now().strftime("%H:%M:%S")
 
     html = f"""
@@ -155,7 +144,6 @@ def index():
     <body>
         <h2>📈 NSE LIVE MARKET DATA by Sumit Gujrathi</h2>
         <p style='text-align:center;color:#ccc;'>Updated: {timestamp} (Auto-refresh 60s)</p>
-
         <table>
             <tr>
                 <th>Symbol</th>
@@ -171,7 +159,6 @@ def index():
 
     for row in results:
         cls = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
-
         html += f"""
             <tr>
                 <td>{row["symbol"]}</td>
@@ -189,7 +176,8 @@ def index():
 
     return html
 
-
+# ------------------------
+# Run Flask app
+# ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-    

@@ -7,17 +7,42 @@ app = Flask(__name__)
 
 # NSE symbols
 SYMBOLS = [
-    ("NIFTY 50", "NIFTY 50"),
-    ("NIFTY BANK", "NIFTY BANK"),
-    ("RELIANCE", "RELIANCE"),
-    ("TCS", "TCS"),
-    ("HDFCBANK", "HDFCBANK"),
-    ("ICICIBANK", "ICICIBANK"),
-    ("INFY", "INFY"),
+    ("NIFTY 50", "NIFTY50"),
+    ("NIFTY BANK", "NIFTYBANK"),
+    ("ACC", "ACC"),
+    ("ADANIPORTS", "ADANIPORTS"),
     ("SBIN", "SBIN"),
-    ("LT", "LT"),
-    ("BHARTIARTL", "BHARTIARTL")
+    ("AMBUJACEM", "AMBUJACEM"),
+    ("WIPRO", "WIPRO"),
+    ("APOLLOTYRE", "APOLLOTYRE"),
+    ("ASIANPAINT", "ASIANPAINT"),
+    ("AUROPHARMA", "AUROPHARMA"),
+    ("AXISBANK", "AXISBANK"),
+    ("BAJFINANCE", "BAJFINANCE"),
+    ("IOC", "IOC"),
+    ("BANKBARODA", "BANKBARODA"),
+    ("BATAINDIA", "BATAINDIA"),
+    ("BERGEPAINT", "BERGEPAINT"),
+    ("BHARATFORG", "BHARATFORG"),
+    ("COALINDIA", "COALINDIA"),
+    ("INDUSINDBK", "INDUSINDBK"),
+    ("DRREDDY", "DRREDDY"),
+    ("INFY", "INFY"),
+    ("JSWSTEEL", "JSWSTEEL"),
+    ("POWERGRID", "POWERGRID"),
+    ("LICHSGFIN", "LICHSGFIN"),
+    ("CANBK", "CANBK"),
+    ("MGL", "MGL"),
+    ("M&MFIN", "M&MFIN"),
+    ("HDFCBANK", "HDFCBANK"),
+    ("MANAPPURAM", "MANAPPURAM"),
+    ("MARICO", "MARICO"),
+    ("SUNTV", "SUNTV"),
+    ("HINDZINC", "HINDZINC"),
+    ("ICICIBANK", "ICICIBANK"),
+    ("ZEEL", "ZEEL")
 ]
+
 
 # Start a session for NSE
 session = requests.Session()

@@ -7,11 +7,11 @@ import time
 app = Flask(__name__)
 
 # ------------------------
-# NSE symbols (indices + stocks)
+# Yahoo Finance symbols
 # ------------------------
 SYMBOLS = [
-    ("NIFTY 50", "NIFTY 50"),
-    ("NIFTY BANK", "NIFTY BANK"),
+    ("NIFTY 50", "^NSEI"),
+    ("NIFTY BANK", "^NSEBANK"),
     ("ACC", "ACC.NS"),
     ("ADANIPORTS", "ADANIPORTS.NS"),
     ("SBIN", "SBIN.NS"),
@@ -47,63 +47,15 @@ SYMBOLS = [
 ]
 
 # ------------------------
-# NSE session for indices
-# ------------------------
-nse_session = requests.Session()
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Origin": "https://www.nseindia.com",
-    "Referer": "https://www.nseindia.com/",
-    "Accept-Language": "en-US,en;q=0.9",
-}
-
-# ------------------------
 # In-memory cache
 # ------------------------
 CACHE = {}
 CACHE_LOCK = threading.Lock()
 
 # ------------------------
-# Initialize NSE session
+# Fetch stock/index from Yahoo Finance
 # ------------------------
-def init_nse():
-    try:
-        nse_session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
-    except:
-        pass
-
-# ------------------------
-# Fetch NIFTY indices
-# ------------------------
-def fetch_indices():
-    try:
-        url = "https://www.nseindia.com/api/allIndices"
-        r = nse_session.get(url, headers=HEADERS, timeout=10)
-        data = r.json()
-        indices = {}
-        for idx in data["data"]:
-            if idx["index"] in ["NIFTY 50", "NIFTY BANK"]:
-                indices[idx["index"]] = {
-                    "symbol": idx["index"],
-                    "ltp": idx.get("last", "—"),
-                    "open": idx.get("open", "—"),
-                    "high": idx.get("high", "—"),
-                    "low": idx.get("low", "—"),
-                    "prev_close": idx.get("previousClose", "—"),
-                    "volume": idx.get("tradedVolume", "—"),
-                    "change": idx.get("variation", "—")
-                }
-        return indices
-    except:
-        # fallback to cache
-        return {idx: CACHE.get(idx, {}) for idx in ["NIFTY 50", "NIFTY BANK"]}
-
-# ------------------------
-# Fetch stock data from Yahoo Finance
-# ------------------------
-def fetch_stock_yahoo(symbol):
+def fetch_yahoo(symbol):
     try:
         url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
         r = requests.get(url, timeout=10)
@@ -134,22 +86,15 @@ def fetch_stock_yahoo(symbol):
 # Background thread to update cache
 # ------------------------
 def background_fetch():
-    init_nse()
     while True:
         results = {}
-        # Fetch indices
-        indices = fetch_indices()
-        results.update(indices)
-        # Fetch stocks
         for name, symbol in SYMBOLS:
-            if symbol not in ["NIFTY 50", "NIFTY BANK"]:
-                results[symbol] = fetch_stock_yahoo(symbol)
-                time.sleep(0.3)  # delay to avoid Yahoo throttling
-        # Update cache
+            results[symbol] = fetch_yahoo(symbol)
+            time.sleep(0.3)  # prevent throttling
         with CACHE_LOCK:
             CACHE.clear()
             CACHE.update(results)
-        time.sleep(30)  # fetch every 30 seconds
+        time.sleep(30)  # refresh every 30 seconds
 
 threading.Thread(target=background_fetch, daemon=True).start()
 
@@ -209,4 +154,4 @@ def index():
 # ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-                    
+        

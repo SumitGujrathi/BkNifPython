@@ -4,98 +4,106 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-YAHOO_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
-
-symbols = [
-    "^NSEI", "^NSEBANK",
-    "SBIN.NS", "HDFCBANK.NS", "ICICIBANK.NS",
-    "INFY.NS", "TCS.NS", "RELIANCE.NS",
-    "LT.NS", "BHARTIARTL.NS"
-]
-
-display_map = {
-    "^NSEI": "NIFTY 50",
-    "^NSEBANK": "BANKNIFTY",
-    "SBIN.NS": "SBIN",
+# NSE symbols with Yahoo keys
+SYMBOLS = {
+    "%5ENSEI": "NIFTY 50",
+    "%5ENSEBANK": "BANKNIFTY",
+    "RELIANCE.NS": "RELIANCE",
+    "TCS.NS": "TCS",
     "HDFCBANK.NS": "HDFCBANK",
     "ICICIBANK.NS": "ICICIBANK",
     "INFY.NS": "INFY",
-    "TCS.NS": "TCS",
-    "RELIANCE.NS": "RELIANCE",
+    "SBIN.NS": "SBIN",
     "LT.NS": "LT",
-    "BHARTIARTL.NS": "BHARTIARTL"
+    "BHARTIARTL.NS": "AIRTEL"
 }
 
-# Required headers to bypass Yahoo blocks
-headers = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)",
-    "Accept": "application/json, text/plain, */*",
-    "Connection": "keep-alive"
-}
+def fetch_yahoo(symbol):
+    """Fetch price from Yahoo using AllOrigins unblocker"""
+    yahoo_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    proxy_url = "https://api.allorigins.win/raw?url=" + requests.utils.quote(yahoo_url)
 
-def fetch_yahoo_data():
     try:
-        session = requests.Session()
-        session.headers.update(headers)
+        r = requests.get(proxy_url, timeout=10)
+        data = r.json()
 
-        # Yahoo requires initial cookie request
-        session.get("https://query1.finance.yahoo.com", timeout=8)
+        meta = data["chart"]["result"][0]["meta"]
 
-        params = {"symbols": ",".join(symbols)}
-        r = session.get(YAHOO_URL, params=params, timeout=10)
-        result = r.json()["quoteResponse"]["result"]
+        price = meta.get("regularMarketPrice", 0)
+        prev = meta.get("chartPreviousClose", 0)
+        change = round(price - prev, 2)
 
-        final = []
+        return {
+            "symbol": SYMBOLS[symbol],
+            "price": round(price, 2),
+            "prev_close": round(prev, 2),
+            "change": change,
+            "open": meta.get("regularMarketOpen", 0),
+            "high": meta.get("regularMarketDayHigh", 0),
+            "low": meta.get("regularMarketDayLow", 0),
+            "volume": meta.get("regularMarketVolume", 0)
+        }
 
-        for item in result:
-            sym = item["symbol"]
-            final.append({
-                "symbol": display_map.get(sym, sym),
-                "ltp": item.get("regularMarketPrice", 0),
-                "open": item.get("regularMarketOpen", 0),
-                "high": item.get("regularMarketDayHigh", 0),
-                "low": item.get("regularMarketDayLow", 0),
-                "prev_close": item.get("regularMarketPreviousClose", 0),
-                "volume": item.get("regularMarketVolume", 0),
-                "change": round(
-                    item.get("regularMarketPrice", 0) -
-                    item.get("regularMarketPreviousClose", 0), 2
-                )
-            })
-
-        return final
-
-    except Exception as e:
-        print("Yahoo Fetch Error:", e)
-        return []
-
+    except:
+        return {
+            "symbol": SYMBOLS[symbol],
+            "price": "—",
+            "prev_close": "—",
+            "change": "—",
+            "open": "—",
+            "high": "—",
+            "low": "—",
+            "volume": "—"
+        }
 
 @app.route("/")
-def home():
-    data = fetch_yahoo_data()
-    timestamp = datetime.now().strftime("%H:%M:%S")
+def index():
+    data = [fetch_yahoo(sym) for sym in SYMBOLS]
 
-    if not data:
-        return "<h1>No data received — Yahoo blocked or unreachable.</h1>"
+    timestamp = datetime.now().strftime("%H:%M:%S")
 
     html = f"""
     <html>
     <head>
-        <title>NSE LIVE (Sumit Gujrathi)</title>
+        <title>NSE LIVE DASHBOARD</title>
         <meta http-equiv="refresh" content="60">
         <style>
-            body {{ background:#111; color:white; font-family:Arial; padding:20px; }}
-            table {{ width:100%; border-collapse:collapse; }}
-            th {{ background:#00d4ff; color:black; padding:12px; }}
-            td {{ padding:10px; border-bottom:1px solid #333; }}
-            .pos {{ color:#00ff88; }}
-            .neg {{ color:#ff4444; }}
+            body {{
+                background:#121212;
+                color:white;
+                font-family:Arial;
+                padding:20px;
+            }}
+            h2 {{
+                text-align:center;
+                color:#00eaff;
+            }}
+            table {{
+                width:100%;
+                border-collapse:collapse;
+                margin-top:20px;
+            }}
+            th {{
+                background:#00eaff;
+                color:black;
+                padding:10px;
+                text-align:left;
+            }}
+            td {{
+                padding:10px;
+                border-bottom:1px solid #333;
+            }}
+            tr:hover {{
+                background:#1f1f1f;
+            }}
+            .green {{ color:#00ff88; font-weight:bold; }}
+            .red {{ color:#ff4444; font-weight:bold; }}
+            .yellow {{ color:#ffdd33; font-weight:bold; }}
         </style>
     </head>
-
     <body>
-        <h1>NSE LIVE — Yahoo Finance</h1>
-        <p>Updated: {timestamp}</p>
+        <h2>📈 NSE LIVE MARKET DATA</h2>
+        <p style='text-align:center;color:#ccc;'>Updated: {timestamp} (Auto-refresh 60s)</p>
 
         <table>
             <tr>
@@ -111,25 +119,29 @@ def home():
     """
 
     for row in data:
-        cls = "pos" if row["change"] >= 0 else "neg"
-        vol = f"{row['volume']:,}" if row["volume"] else "—"
+        change_class = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
 
         html += f"""
             <tr>
                 <td>{row['symbol']}</td>
-                <td>{row['ltp']}</td>
+                <td class='yellow'>{row['price']}</td>
                 <td>{row['open']}</td>
                 <td>{row['high']}</td>
                 <td>{row['low']}</td>
                 <td>{row['prev_close']}</td>
-                <td>{vol}</td>
-                <td class='{cls}'>{row['change']}</td>
+                <td>{row['volume']}</td>
+                <td class='{change_class}'>{row['change']}</td>
             </tr>
         """
 
-    html += "</table></body></html>"
+    html += """
+        </table>
+    </body>
+    </html>
+    """
+
     return html
 
-
-app.run(host="0.0.0.0", port=5000, debug=True)
-        
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)
+    

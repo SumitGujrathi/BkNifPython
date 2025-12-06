@@ -1,38 +1,45 @@
 from flask import Flask, render_template
-import yfinance as yf
-import time
+import requests
+import json
 from datetime import datetime
 
 app = Flask(__name__)
 
-symbols = [
-    "^NSEI", "^NSEBANK", "ACC.NS", "ADANIPORTS.NS", "SBIN.NS", "AMBUJACEM.NS",
-    "WIPRO.NS", "APOLLOTYRE.NS", "ASIANPAINT.NS", "AUROPHARMA.NS",
-    "AXISBANK.NS", "BAJFINANCE.NS", "IOC.NS", "BANKBARODA.NS"
-    # Add more during testing
-]
+symbols = ["^NSEI", "^NSEBANK", "ACC.NS", "ADANIPORTS.NS", "SBIN.NS", "HDFCBANK.NS"]
+
+def fetch_yahoo_data(symbol):
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        params = {'period1': '0', 'period2': '9999999999', 'interval': '1m'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        data = resp.json()
+        
+        if data['chart']['result']:
+            quote = data['chart']['result'][0]
+            meta = quote['meta']
+            timestamps = quote['timestamp']
+            if timestamps:
+                latest = quote['indicators']['quote'][0]
+                return {
+                    'symbol': symbol.replace('.NS', '').replace('^NSEI', 'NIFTY_50').replace('^NSEBANK', 'NIFTY_BANK'),
+                    'ltp': round(latest['close'][-1] if latest['close'] else 0, 2),
+                    'open': round(meta.get('regularMarketOpen', 0), 2),
+                    'high': round(meta.get('regularMarketDayHigh', 0), 2),
+                    'low': round(meta.get('regularMarketDayLow', 0), 2),
+                    'prev_close': round(meta.get('regularMarketPreviousClose', 0), 2),
+                    'volume': int(latest['volume'][-1]) if latest['volume'] else 0
+                }
+    except:
+        pass
+    return None
 
 def fetch_data():
     data = []
     for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            hist = ticker.history(period="1d", interval="5m")
-            if not hist.empty and len(hist) > 0:
-                latest = hist.iloc[-1]
-                data.append({
-                    'symbol': symbol.replace('.NS', '').replace('^NSEI', 'NIFTY_50').replace('^NSEBANK', 'NIFTY_BANK'),
-                    'ltp': round(info.get('currentPrice', latest.get('Close', 0)), 2),
-                    'open': round(latest.get('Open', 0), 2),
-                    'high': round(latest.get('High', 0), 2),
-                    'low': round(latest.get('Low', 0), 2),
-                    'prev_close': round(info.get('previousClose', 0), 2),
-                    'volume': int(latest.get('Volume', 0))
-                })
-        except Exception as e:
-            print(f"Error {symbol}: {e}")
-            continue
+        result = fetch_yahoo_data(symbol)
+        if result:
+            data.append(result)
     return data
 
 @app.route('/')
@@ -42,4 +49,4 @@ def index():
     return render_template('index.html', data=data, last_update=last_update)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)

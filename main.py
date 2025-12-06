@@ -125,7 +125,7 @@ def index():
         </style>
     </head>
     <body>
-        <h2>📈 NSE LIVE MARKET DATA</h2>
+        <h2>📈 NSE LIVE MARKET DATA by Sumit Gujrathi</h2>
         <p style='text-align:center;color:#ccc;'>Updated: {timestamp} (Auto-refresh 60s)</p>
 
         <table>

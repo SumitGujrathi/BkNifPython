@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 # NSE symbols
 SYMBOLS = [
-    ("NIFTY 50", "NIFTY50"),
-    ("NIFTY BANK", "NIFTYBANK"),
+    ("NIFTY 50", "NIFTY 50"),
+    ("NIFTY BANK", "NIFTY BANK"),
     ("ACC", "ACC"),
     ("ADANIPORTS", "ADANIPORTS"),
     ("SBIN", "SBIN"),
@@ -65,7 +65,10 @@ def init_nse():
 
 def fetch_stock(symbol):
     """Fetch stock quote from NSE API."""
-    url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+    if ( symbol== "NIFTY 50" || symbol == "NIFTY BANK"):
+        url = f"https://www.nseindia.com/api/equity-stockIndices?index={symbol}"
+    else:
+        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
 
     try:
         r = session.get(url, headers=HEADERS, timeout=10)

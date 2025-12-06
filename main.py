@@ -58,6 +58,11 @@ HEADERS = {
 }
 
 # ------------------------
+# Cache last stock values to prevent blank display
+# ------------------------
+LAST_RESULTS = {}
+
+# ------------------------
 # Initialize NSE session (fetch cookies)
 # ------------------------
 def init_nse():
@@ -67,74 +72,81 @@ def init_nse():
         pass
 
 # ------------------------
-# Fetch stock or index data
+# Fetch indices (NIFTY 50 & BANK NIFTY) in one request
+# ------------------------
+def fetch_indices():
+    try:
+        url = "https://www.nseindia.com/api/allIndices"
+        r = session.get(url, headers=HEADERS, timeout=10)
+        data = r.json()
+        indices = {}
+        for idx in data["data"]:
+            if idx["index"] in ["NIFTY 50", "NIFTY BANK"]:
+                indices[idx["index"]] = {
+                    "symbol": idx["index"],
+                    "ltp": idx.get("last", "—"),
+                    "open": idx.get("open", "—"),
+                    "high": idx.get("high", "—"),
+                    "low": idx.get("low", "—"),
+                    "prev_close": idx.get("previousClose", "—"),
+                    "volume": idx.get("tradedVolume", "—"),
+                    "change": idx.get("variation", "—")
+                }
+        return indices
+    except:
+        # fallback to last results
+        return {idx: LAST_RESULTS.get(idx, {}) for idx in ["NIFTY 50", "NIFTY BANK"]}
+
+# ------------------------
+# Fetch individual stock data
 # ------------------------
 def fetch_stock(symbol):
-    """Fetch stock or index data from NSE API."""
     try:
-        # Indices
-        if symbol in ["NIFTY 50", "NIFTY BANK"]:
-            url = f"https://www.nseindia.com/api/equity-stockIndices?index={symbol.replace(' ', '%20')}"
-            r = session.get(url, headers=HEADERS, timeout=10)
-            data = r.json()
-            idx = data["data"][0]
-            return {
-                "symbol": symbol,
-                "ltp": idx.get("last", "—"),
-                "open": idx.get("open", "—"),
-                "high": idx.get("high", "—"),
-                "low": idx.get("low", "—"),
-                "prev_close": idx.get("previousClose", "—"),
-                "volume": idx.get("tradedVolume", "—"),
-                "change": idx.get("variation", "—"),
-            }
-
-        # Stocks
-        else:
-            url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
-            r = session.get(url, headers=HEADERS, timeout=10)
-            data = r.json()
-            p = data["priceInfo"]
-            return {
-                "symbol": symbol,
-                "ltp": p.get("lastPrice", "—"),
-                "open": p.get("open", "—"),
-                "high": p.get("intraDayHighLow", {}).get("max", "—"),
-                "low": p.get("intraDayHighLow", {}).get("min", "—"),
-                "prev_close": p.get("previousClose", "—"),
-                "volume": data.get("securityInfo", {}).get("totalTradedVolume", "—"),
-                "change": p.get("change", "—"),
-            }
-
-    except:
-        return {
+        url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        r = session.get(url, headers=HEADERS, timeout=10)
+        data = r.json()
+        p = data["priceInfo"]
+        stock_data = {
             "symbol": symbol,
-            "ltp": "—",
-            "open": "—",
-            "high": "—",
-            "low": "—",
-            "prev_close": "—",
-            "volume": "—",
-            "change": "—"
+            "ltp": p.get("lastPrice", "—"),
+            "open": p.get("open", "—"),
+            "high": p.get("intraDayHighLow", {}).get("max", "—"),
+            "low": p.get("intraDayHighLow", {}).get("min", "—"),
+            "prev_close": p.get("previousClose", "—"),
+            "volume": data.get("securityInfo", {}).get("totalTradedVolume", "—"),
+            "change": p.get("change", "—")
         }
+        return stock_data
+    except:
+        # fallback to last result
+        return LAST_RESULTS.get(symbol, {"symbol": symbol, "ltp":"—","open":"—","high":"—","low":"—","prev_close":"—","volume":"—","change":"—"})
 
 # ------------------------
-# Flask route for webpage
+# Flask route
 # ------------------------
 @app.route("/")
 def index():
-    init_nse()  # initialize cookies
+    init_nse()
 
-    results = []
+    results = {}
 
-    # Fetch all data first
+    # Fetch indices first
+    indices_data = fetch_indices()
+    results.update(indices_data)
+
+    # Fetch individual stocks
     for name, symbol in SYMBOLS:
-        stock_data = fetch_stock(symbol)
-        results.append(stock_data)
-        time.sleep(0.2)  # small delay to prevent NSE throttling
+        if symbol not in ["NIFTY 50", "NIFTY BANK"]:
+            stock_data = fetch_stock(symbol)
+            results[symbol] = stock_data
+            time.sleep(0.15)  # small delay to prevent NSE throttling
+
+    # Store results in LAST_RESULTS cache
+    LAST_RESULTS.update(results)
 
     timestamp = datetime.now().strftime("%H:%M:%S")
 
+    # Generate HTML
     html = f"""
     <html>
     <head>
@@ -168,7 +180,7 @@ def index():
             </tr>
     """
 
-    for row in results:
+    for symbol, row in results.items():
         cls = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
         html += f"""
             <tr>
@@ -192,4 +204,3 @@ def index():
 # ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-            

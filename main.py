@@ -1,12 +1,13 @@
 from flask import Flask
 import requests
 from datetime import datetime
+import threading
 import time
 
 app = Flask(__name__)
 
 # ------------------------
-# NSE symbols (indices + stocks)
+# NSE symbols
 # ------------------------
 SYMBOLS = [
     ("NIFTY 50", "NIFTY 50"),
@@ -58,12 +59,13 @@ HEADERS = {
 }
 
 # ------------------------
-# Cache last stock values to prevent blank display
+# In-memory cache for live data
 # ------------------------
-LAST_RESULTS = {}
+CACHE = {}
+CACHE_LOCK = threading.Lock()  # ensure thread-safe access
 
 # ------------------------
-# Initialize NSE session (fetch cookies)
+# Initialize NSE session (cookies)
 # ------------------------
 def init_nse():
     try:
@@ -94,8 +96,7 @@ def fetch_indices():
                 }
         return indices
     except:
-        # fallback to last results
-        return {idx: LAST_RESULTS.get(idx, {}) for idx in ["NIFTY 50", "NIFTY BANK"]}
+        return {idx: CACHE.get(idx, {}) for idx in ["NIFTY 50", "NIFTY BANK"]}
 
 # ------------------------
 # Fetch individual stock data
@@ -106,7 +107,7 @@ def fetch_stock(symbol):
         r = session.get(url, headers=HEADERS, timeout=10)
         data = r.json()
         p = data["priceInfo"]
-        stock_data = {
+        return {
             "symbol": symbol,
             "ltp": p.get("lastPrice", "—"),
             "open": p.get("open", "—"),
@@ -114,39 +115,48 @@ def fetch_stock(symbol):
             "low": p.get("intraDayHighLow", {}).get("min", "—"),
             "prev_close": p.get("previousClose", "—"),
             "volume": data.get("securityInfo", {}).get("totalTradedVolume", "—"),
-            "change": p.get("change", "—")
+            "change": p.get("change", "—"),
         }
-        return stock_data
     except:
-        # fallback to last result
-        return LAST_RESULTS.get(symbol, {"symbol": symbol, "ltp":"—","open":"—","high":"—","low":"—","prev_close":"—","volume":"—","change":"—"})
+        return CACHE.get(symbol, {"symbol": symbol,"ltp":"—","open":"—","high":"—","low":"—","prev_close":"—","volume":"—","change":"—"})
 
 # ------------------------
-# Flask route
+# Background thread to fetch live data
+# ------------------------
+def background_fetch():
+    init_nse()
+    while True:
+        results = {}
+
+        # Fetch indices first
+        indices = fetch_indices()
+        results.update(indices)
+
+        # Fetch stocks individually
+        for name, symbol in SYMBOLS:
+            if symbol not in ["NIFTY 50", "NIFTY BANK"]:
+                results[symbol] = fetch_stock(symbol)
+                time.sleep(0.15)  # small delay to reduce NSE blocking
+
+        # Update cache safely
+        with CACHE_LOCK:
+            CACHE.clear()
+            CACHE.update(results)
+
+        time.sleep(30)  # fetch every 30 seconds
+
+# Start background thread
+threading.Thread(target=background_fetch, daemon=True).start()
+
+# ------------------------
+# Flask route to render dashboard
 # ------------------------
 @app.route("/")
 def index():
-    init_nse()
-
-    results = {}
-
-    # Fetch indices first
-    indices_data = fetch_indices()
-    results.update(indices_data)
-
-    # Fetch individual stocks
-    for name, symbol in SYMBOLS:
-        if symbol not in ["NIFTY 50", "NIFTY BANK"]:
-            stock_data = fetch_stock(symbol)
-            results[symbol] = stock_data
-            time.sleep(0.15)  # small delay to prevent NSE throttling
-
-    # Store results in LAST_RESULTS cache
-    LAST_RESULTS.update(results)
-
     timestamp = datetime.now().strftime("%H:%M:%S")
+    with CACHE_LOCK:
+        results = CACHE.copy()
 
-    # Generate HTML
     html = f"""
     <html>
     <head>
@@ -181,17 +191,17 @@ def index():
     """
 
     for symbol, row in results.items():
-        cls = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
+        cls = "green" if isinstance(row.get("change"), (int,float)) and row["change"] >= 0 else "red"
         html += f"""
             <tr>
-                <td>{row["symbol"]}</td>
-                <td class='yellow'>{row["ltp"]}</td>
-                <td>{row["open"]}</td>
-                <td>{row["high"]}</td>
-                <td>{row["low"]}</td>
-                <td>{row["prev_close"]}</td>
-                <td>{row["volume"]}</td>
-                <td class='{cls}'>{row["change"]}</td>
+                <td>{row.get("symbol","—")}</td>
+                <td class='yellow'>{row.get("ltp","—")}</td>
+                <td>{row.get("open","—")}</td>
+                <td>{row.get("high","—")}</td>
+                <td>{row.get("low","—")}</td>
+                <td>{row.get("prev_close","—")}</td>
+                <td>{row.get("volume","—")}</td>
+                <td class='{cls}'>{row.get("change","—")}</td>
             </tr>
         """
 
@@ -204,3 +214,4 @@ def index():
 # ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
+        

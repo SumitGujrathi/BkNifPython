@@ -4,68 +4,105 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# NSE symbols with Yahoo keys
+# Index & stock symbols
 SYMBOLS = {
-    "%5ENSEI": "NIFTY 50",
-    "%5ENSEBANK": "BANKNIFTY",
-    "RELIANCE.NS": "RELIANCE",
-    "TCS.NS": "TCS",
-    "HDFCBANK.NS": "HDFCBANK",
-    "ICICIBANK.NS": "ICICIBANK",
-    "INFY.NS": "INFY",
-    "SBIN.NS": "SBIN",
-    "LT.NS": "LT",
-    "BHARTIARTL.NS": "AIRTEL"
+    "NIFTY 50": "NIFTY 50",
+    "NIFTY BANK": "NIFTY BANK",
+    "RELIANCE": "RELIANCE",
+    "TCS": "TCS",
+    "HDFCBANK": "HDFCBANK",
+    "ICICIBANK": "ICICIBANK",
+    "INFY": "INFY",
+    "SBIN": "SBIN",
+    "LT": "LT",
+    "BHARTIARTL": "BHARTIARTL"
 }
 
-def fetch_yahoo(symbol):
-    """Fetch price from Yahoo using AllOrigins unblocker"""
-    yahoo_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-    proxy_url = "https://api.allorigins.win/raw?url=" + requests.utils.quote(yahoo_url)
+# NSE requires session + headers
+session = requests.Session()
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+}
+
+def init_nse_session():
+    """Initialize session for NSE India"""
+    try:
+        session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
+    except:
+        pass
+
+def fetch_from_nse(symbol):
+    """Fetch LIVE data from NSE India"""
+
+    # Resolve index vs stock
+    if symbol in ["NIFTY 50", "NIFTY BANK"]:
+        url = f"https://www.nseindia.com/api/marketStatus"
+        try:
+            r = session.get(url, headers=HEADERS, timeout=10)
+            data = r.json()
+
+            for idx in data["marketState"]:
+                if idx["index"] == symbol:
+                    return {
+                        "symbol": symbol,
+                        "ltp": idx.get("last", "—"),
+                        "open": "—",
+                        "high": "—",
+                        "low": "—",
+                        "prev_close": idx.get("previousClose", "—"),
+                        "volume": "—",
+                        "change": idx.get("change", "—")
+                    }
+        except:
+            pass
+
+    # Stock Quote API (LIVE)
+    url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
 
     try:
-        r = requests.get(proxy_url, timeout=10)
+        r = session.get(url, headers=HEADERS, timeout=10)
         data = r.json()
 
-        meta = data["chart"]["result"][0]["meta"]
-
-        price = meta.get("regularMarketPrice", 0)
-        prev = meta.get("chartPreviousClose", 0)
-        change = round(price - prev, 2)
+        price_data = data["priceInfo"]
 
         return {
-            "symbol": SYMBOLS[symbol],
-            "price": round(price, 2),
-            "prev_close": round(prev, 2),
-            "change": change,
-            "open": meta.get("regularMarketOpen", 0),
-            "high": meta.get("regularMarketDayHigh", 0),
-            "low": meta.get("regularMarketDayLow", 0),
-            "volume": meta.get("regularMarketVolume", 0)
+            "symbol": symbol,
+            "ltp": price_data.get("lastPrice", "—"),
+            "open": price_data.get("open", "—"),
+            "high": price_data.get("intraDayHighLow", {}).get("max", "—"),
+            "low": price_data.get("intraDayHighLow", {}).get("min", "—"),
+            "prev_close": price_data.get("previousClose", "—"),
+            "volume": data.get("securityInfo", {}).get("totalTradedVolume", "—"),
+            "change": price_data.get("change", "—")
         }
 
-    except:
+    except Exception as e:
         return {
-            "symbol": SYMBOLS[symbol],
-            "price": "—",
-            "prev_close": "—",
-            "change": "—",
+            "symbol": symbol,
+            "ltp": "—",
             "open": "—",
             "high": "—",
             "low": "—",
-            "volume": "—"
+            "prev_close": "—",
+            "volume": "—",
+            "change": "—"
         }
+
 
 @app.route("/")
 def index():
-    data = [fetch_yahoo(sym) for sym in SYMBOLS]
+    init_nse_session()
 
+    data = [fetch_from_nse(sym) for sym in SYMBOLS.values()]
     timestamp = datetime.now().strftime("%H:%M:%S")
 
     html = f"""
     <html>
     <head>
-        <title>NSE LIVE DASHBOARD by Sumit Gujrathi</title>
+        <title>NSE INDIA LIVE</title>
         <meta http-equiv="refresh" content="60">
         <style>
             body {{
@@ -87,7 +124,6 @@ def index():
                 background:#00eaff;
                 color:black;
                 padding:10px;
-                text-align:left;
             }}
             td {{
                 padding:10px;
@@ -102,7 +138,7 @@ def index():
         </style>
     </head>
     <body>
-        <h2>📈 NSE LIVE MARKET DATA</h2>
+        <h2>📈 NSE INDIA LIVE MARKET DATA</h2>
         <p style='text-align:center;color:#ccc;'>Updated: {timestamp} (Auto-refresh 60s)</p>
 
         <table>
@@ -119,18 +155,17 @@ def index():
     """
 
     for row in data:
-        change_class = "green" if isinstance(row["change"], (int, float)) and row["change"] >= 0 else "red"
-
+        cls = "green" if str(row["change"]).startswith("+") else "red"
         html += f"""
             <tr>
                 <td>{row['symbol']}</td>
-                <td class='yellow'>{row['price']}</td>
+                <td class='yellow'>{row['ltp']}</td>
                 <td>{row['open']}</td>
                 <td>{row['high']}</td>
                 <td>{row['low']}</td>
                 <td>{row['prev_close']}</td>
                 <td>{row['volume']}</td>
-                <td class='{change_class}'>{row['change']}</td>
+                <td class='{cls}'>{row['change']}</td>
             </tr>
         """
 
@@ -142,6 +177,7 @@ def index():
 
     return html
 
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-    
+                                          

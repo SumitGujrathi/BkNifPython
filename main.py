@@ -65,7 +65,7 @@ def index():
     html = f"""
     <html>
     <head>
-        <title>NSE LIVE DASHBOARD</title>
+        <title>NSE LIVE DASHBOARD by Sumit Gujrathi</title>
         <meta http-equiv="refresh" content="60">
         <style>
             body {{

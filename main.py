@@ -97,7 +97,7 @@ def fetch_indices():
                 }
         return indices
     except:
-        # fallback
+        # fallback to cache
         return {idx: CACHE.get(idx, {}) for idx in ["NIFTY 50", "NIFTY BANK"]}
 
 # ------------------------
@@ -108,19 +108,26 @@ def fetch_stock_yahoo(symbol):
         url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
         r = requests.get(url, timeout=10)
         data = r.json()
-        quote = data["quoteResponse"]["result"][0]
+        result = data.get("quoteResponse", {}).get("result", [])
+        if not result:
+            return CACHE.get(symbol, {"symbol": symbol,"ltp":"—","open":"—","high":"—",
+                                      "low":"—","prev_close":"—","volume":"—","change":"—"})
+        quote = result[0]
+        ltp = quote.get("regularMarketPrice") or 0
+        prev_close = quote.get("regularMarketPreviousClose") or 0
+        change = round(ltp - prev_close, 2) if ltp and prev_close else "—"
         return {
             "symbol": quote.get("shortName", symbol),
-            "ltp": quote.get("regularMarketPrice", "—"),
-            "open": quote.get("regularMarketOpen", "—"),
-            "high": quote.get("regularMarketDayHigh", "—"),
-            "low": quote.get("regularMarketDayLow", "—"),
-            "prev_close": quote.get("regularMarketPreviousClose", "—"),
-            "volume": quote.get("regularMarketVolume", "—"),
-            "change": round(quote.get("regularMarketPrice", 0) - quote.get("regularMarketPreviousClose", 0), 2)
+            "ltp": ltp or "—",
+            "open": quote.get("regularMarketOpen") or "—",
+            "high": quote.get("regularMarketDayHigh") or "—",
+            "low": quote.get("regularMarketDayLow") or "—",
+            "prev_close": prev_close or "—",
+            "volume": quote.get("regularMarketVolume") or "—",
+            "change": change
         }
     except:
-        return CACHE.get(symbol, {"symbol": symbol, "ltp":"—","open":"—","high":"—",
+        return CACHE.get(symbol, {"symbol": symbol,"ltp":"—","open":"—","high":"—",
                                   "low":"—","prev_close":"—","volume":"—","change":"—"})
 
 # ------------------------
@@ -137,7 +144,7 @@ def background_fetch():
         for name, symbol in SYMBOLS:
             if symbol not in ["NIFTY 50", "NIFTY BANK"]:
                 results[symbol] = fetch_stock_yahoo(symbol)
-                time.sleep(0.1)  # small delay
+                time.sleep(0.3)  # delay to avoid Yahoo throttling
         # Update cache
         with CACHE_LOCK:
             CACHE.clear()
@@ -202,4 +209,4 @@ def index():
 # ------------------------
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
-        
+                    

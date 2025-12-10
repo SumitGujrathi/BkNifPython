@@ -1,53 +1,47 @@
-import requests
-import pandas as pd
+from fastapi import FastAPI
+import uvicorn
+from dhansdk import Dhan
 import time
+import threading
 
-session = requests.Session()
+app = FastAPI()
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://www.nseindia.com/option-chain",
-}
+# ⬇️ Put your credentials here
+CLIENT_ID = "YOUR_DHAN_CLIENT_ID"
+ACCESS_TOKEN = "YOUR_DHAN_ACCESS_TOKEN"
 
-def get_option_chain():
-    try:
-        session.get("https://www.nseindia.com", headers=headers, timeout=10)
-        url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-        r = session.get(url, headers=headers, timeout=10)
+dhan = Dhan(CLIENT_ID, ACCESS_TOKEN)
 
-        if r.status_code != 200:
-            print("Error:", r.status_code)
-            return pd.DataFrame()
+cached_data = None
+last_updated = 0
 
-        data = r.json()
-        rows = data.get("records", {}).get("data", [])
+# Auto-refresh every 60 seconds in background thread
+def background_updater():
+    global cached_data, last_updated
+    while True:
+        try:
+            cached_data = dhan.option_chain("NIFTY")
+            last_updated = time.time()
+            print("Updated option chain at:", last_updated)
+        except Exception as e:
+            print("Update error:", e)
+        time.sleep(60)
 
-        out = []
-        for row in rows:
-            strike = row.get("strikePrice")
-            ce = row.get("CE", {})
-            pe = row.get("PE", {})
-            out.append({
-                "strike": strike,
-                "CE_ltp": ce.get("lastPrice"),
-                "CE_oi": ce.get("openInterest"),
-                "PE_ltp": pe.get("lastPrice"),
-                "PE_oi": pe.get("openInterest")
-            })
+threading.Thread(target=background_updater, daemon=True).start()
 
-        df = pd.DataFrame(out)
-        return df
 
-    except Exception as e:
-        print("EXCEPTION:", e)
-        return pd.DataFrame()
+@app.get("/")
+def home():
+    return {"status": "running", "message": "Nifty Option Chain API"}
+
+@app.get("/optionchain/nifty")
+def get_nifty_chain():
+    return {
+        "updated_at": last_updated,
+        "data": cached_data
+    }
+
 
 if __name__ == "__main__":
-    print("🚀 Worker started…")
-    while True:
-        df = get_option_chain()
-        print(df)
-        time.sleep(60)
-    
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+                

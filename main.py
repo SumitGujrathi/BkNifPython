@@ -1,78 +1,139 @@
-import requests
-import threading
-import time
-import logging
-from fastapi import FastAPI
+import pandas as pd
+from flask import Flask, render_template
+from datetime import datetime
+import pytz
+import os
+import sys
 
-app = FastAPI()
+# Import the specific NSE function from the community library
+try:
+    from nsepython import nse_optionchain_scrapper
+except ImportError:
+    # If deploying on Render, this check will fail if requirements.txt is missing nsepython
+    # For local testing, ensure it is installed.
+    print("Error: The 'nsepython' library is not installed.")
+    sys.exit(1)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
 
-CLIENT_ID = "YOUR_DHAN_CLIENT_ID"
-ACCESS_TOKEN = "YOUR_DHAN_ACCESS_TOKEN"
+# --- Configuration ---
+SYMBOL = "NIFTY" 
+# Use environment variable for port (required by Render) or default to 5000
+PORT = int(os.environ.get('PORT', 5000))
+IST = pytz.timezone('Asia/Kolkata')
 
-# Dummy Dhan wrapper; replace with your real call
-class Dhan:
-    def __init__(self, client_id, token):
-        self.client_id = client_id
-        self.token = token
+app = Flask(__name__)
 
-    def option_chain(self, symbol="NIFTY"):
-        url = f"https://api.dhan.co/v1/market/option-chain?symbol={symbol}"
-        r = requests.get(url, headers={
-            "Client-Id": self.client_id,
-            "Access-Token": self.token
-        }, timeout=10)
-        r.raise_for_status()
-        return r.json()
 
-dhan = Dhan(CLIENT_ID, ACCESS_TOKEN)
-
-cached_data = None
-last_updated = None
-
-def update_loop():
-    global cached_data, last_updated
-    while True:
-        try:
-            logging.info("Fetching option chain from Dhan...")
-            data = dhan.option_chain("NIFTY")
-            cached_data = data
-            last_updated = time.time()
-            logging.info("Fetched successfully at %s", last_updated)
-        except Exception as e:
-            logging.error("Error fetching data: %s", e)
-        time.sleep(60)
-
-# Fetch once immediately on startup
-def startup_fetch():
-    try:
-        logging.info("Initial fetch on startup...")
-        data = dhan.option_chain("NIFTY")
-        global cached_data, last_updated
-        cached_data = data
-        last_updated = time.time()
-        logging.info("Initial fetch success at %s", last_updated)
-    except Exception as e:
-        logging.error("Initial fetch failed: %s", e)
-
-@app.on_event("startup")
-def on_startup():
-    startup_fetch()
-    thread = threading.Thread(target=update_loop, daemon=True)
-    thread.start()
-
-@app.get("/")
-def home():
-    return {"status": "running", "message": "Nifty Option Chain API"}
-
-@app.get("/optionchain/nifty")
-def get_chain():
-    return {
-        "updated_at": last_updated,
-        "data": cached_data
-}
+def is_market_open():
+    """Checks if the time is within the NSE regular trading hours (9:15 AM to 3:30 PM IST)."""
+    now_ist = datetime.now(IST)
     
+    if now_ist.weekday() >= 5:
+        return False, f"Weekend ({now_ist.strftime('%A')})"
+
+    market_open = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+
+    if market_open <= now_ist <= market_close:
+        return True, "Market Open"
+    
+    if now_ist < market_open:
+        return False, "Pre-Open"
+    
+    return False, "Market Closed"
+
+
+def fetch_and_process_oc_data():
+    """Fetches, processes, and returns the Option Chain DataFrame."""
+    
+    is_open, status = is_market_open()
+    
+    if not is_open:
+        # Return empty data structure if market is closed
+        return None, status, None
+
+    try:
+        # Fetch data using the reliable nsepython library
+        data = nse_optionchain_scrapper(SYMBOL)
+        
+        if not (data and 'records' in data and 'data' in data['records']):
+            return None, "Data Filtered/Empty", None
+
+        # --- Data Processing (Same logic as before) ---
+        option_data = data['records']['data']
+        underlying_value = data['records']['underlyingValue']
+        expiry_date = data['records']['expiryDates'][0]
+        
+        nearest_strike = round(underlying_value / 50) * 50
+        STRIKE_RANGE = 5
+        min_strike = nearest_strike - (STRIKE_RANGE * 50)
+        max_strike = nearest_strike + (STRIKE_RANGE * 50)
+        
+        filtered_options = [
+            item for item in option_data 
+            if item.get('expiryDate') == expiry_date and min_strike <= item.get('strikePrice', 0) <= max_strike
+        ]
+        
+        structured_data = []
+        for item in filtered_options:
+            strike = item.get('strikePrice')
+            ce = item.get('CE', {})
+            pe = item.get('PE', {})
+            
+            structured_data.append({
+                'CE_OI': ce.get('openInterest', 0),
+                'CE_Chg_OI': ce.get('changeinOpenInterest', 0),
+                'CE_LTP': ce.get('lastPrice', 0),
+                'Strike Price': strike,
+                'PE_LTP': pe.get('lastPrice', 0),
+                'PE_Chg_OI': pe.get('changeinOpenInterest', 0),
+                'PE_OI': pe.get('openInterest', 0)
+            })
+
+        df = pd.DataFrame(structured_data)
+        
+        # Prepare header data for the template
+        header_data = {
+            'ltp': f"₹{underlying_value:,.2f}",
+            'expiry': expiry_date,
+            'refresh_time': datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S IST')
+        }
+        
+        # Convert DataFrame to HTML table, highlighting ATM strike
+        def highlight_atm(row):
+            is_atm = row['Strike Price'] == nearest_strike
+            return ['style="background-color: #ffff99;"' if is_atm else '' for _ in row]
+
+        # Use to_html for Flask compatibility
+        html_table = df.to_html(
+            index=False, 
+            classes='table table-striped table-bordered text-center', 
+            float_format='%.2f',
+            justify='center',
+            formatters={
+                'Strike Price': lambda x: f'{x:,.0f}',
+            }
+        )
+        
+        return html_table, "Market Open", header_data
+
+    except Exception as e:
+        print(f"Error during data fetch/processing: {e}")
+        return None, f"Error: {e}", None
+
+@app.route('/')
+def index():
+    """Main route to fetch and display the Option Chain data."""
+    table_html, status, header_data = fetch_and_process_oc_data()
+    
+    return render_template(
+        'index.html', 
+        table_html=table_html,
+        status=status,
+        header=header_data
+    )
+
+if __name__ == '__main__':
+    # Use Gunicorn in a production environment (like Render), but Flask dev server for local testing
+    print(f"Starting Flask server on port {PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=True)

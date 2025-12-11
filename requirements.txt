@@ -1,3 +1,6 @@
-fastapi
-uvicorn
+Flask
 requests
+pandas
+pytz
+nsepython
+gunicorn

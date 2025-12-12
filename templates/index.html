@@ -64,10 +64,10 @@
     </div>
 
     <script>
-        // NOTE: If deploying to Render, you MUST update this URL to your deployed domain, 
-        // e.g., 'https://your-render-app-name.onrender.com/api/optionchain'
-        const API_URL = 'http://127.0.0.1:5000/api/optionchain'; 
-        const REFRESH_INTERVAL_MS = 60000; // 60,000 milliseconds = 1 minute
+        // CRITICAL: Replace this with your actual deployed Render URL.
+        const RENDER_DOMAIN = 'https://bknifsumit.onrender.com';
+        const API_URL = RENDER_DOMAIN + '/api/optionchain'; 
+        const REFRESH_INTERVAL_MS = 60000; // 1 minute
 
         async function fetchOptionChainData() {
             try {
@@ -76,13 +76,22 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
+                
+                // If the error message is returned from the backend JSON, handle it
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
                 renderTable(data);
                 document.getElementById('last-updated').textContent = `Last Updated: ${new Date().toLocaleTimeString()} (Next refresh in 60s)`;
 
             } catch (error) {
                 console.error("Error fetching data:", error);
-                document.getElementById('nifty-spot').textContent = 'ERROR';
-                document.getElementById('last-updated').textContent = `Error fetching data: ${error.message}`;
+                // Display the error in the header if the fetch fails
+                document.getElementById('nifty-spot').innerHTML = '<span style="color: red;">ERROR</span>';
+                document.getElementById('expiry-date').textContent = 'N/A';
+                document.getElementById('pcr-value').textContent = 'N/A';
+                document.getElementById('last-updated').textContent = `Data Fetch Failed: ${error.message}. Retrying...`;
             }
         }
 
@@ -90,7 +99,7 @@
             const tbody = document.querySelector('#option-chain-table tbody');
             tbody.innerHTML = ''; // Clear existing data
 
-            // 1. Get Summary Data (New structure)
+            // 1. Get Summary Data
             const underlyingValue = data.underlyingValue ? data.underlyingValue.toFixed(2) : 'N/A';
             const expiryDate = data.expiryDate || 'N/A';
             const pcrValue = data.pcr ? data.pcr.toFixed(4) : 'N/A';
@@ -101,22 +110,22 @@
             document.getElementById('expiry-date').textContent = expiryDate;
             document.getElementById('pcr-value').textContent = pcrValue;
 
+            // Helper functions for formatting
+            const fmt = (val) => (val || 0).toLocaleString('en-IN');
+            const fmtP = (val) => (val || 0).toFixed(2);
+
             // 2. Render Table Rows
+            const spotPrice = parseFloat(underlyingValue);
             chainData.forEach(item => {
                 const tr = document.createElement('tr');
                 const strikePrice = item.strikePrice;
                 
                 // Determine ITM/OTM class for visual highlighting
-                // Note: The comparison is done against the numerical Spot Price, not the string representation
-                const isITM_CE = strikePrice < parseFloat(underlyingValue);
-                const isITM_PE = strikePrice > parseFloat(underlyingValue);
+                const isITM_CE = strikePrice < spotPrice;
+                const isITM_PE = strikePrice > spotPrice;
 
                 const CE = item.CE || {}; 
                 const PE = item.PE || {};
-
-                // Helper to format numbers or display 0
-                const fmt = (val) => (val || 0).toLocaleString('en-IN');
-                const fmtP = (val) => (val || 0).toFixed(2);
 
                 tr.innerHTML += `
                     <td class="${isITM_CE ? 'itm-call' : ''}">${fmt(CE.changeinOpenInterest)}</td>

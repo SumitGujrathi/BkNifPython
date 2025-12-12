@@ -1,6 +1,4 @@
 Flask
 requests
 pandas
-pytz
-nsepython
-gunicorn
+flask-cors

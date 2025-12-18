@@ -9,58 +9,53 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-def fetch_with_retry(url, max_retries=3):
-    # Create a scraper that mimics a Desktop Chrome browser
+def fetch_nse_option_chain():
+    # Use cloudscraper to bypass NSE's bot protection
     scraper = cloudscraper.create_scraper(
         browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
     )
     
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Attempt {attempt + 1}: Connecting to NSE...")
-            
-            # Step A: Visit homepage to clear the 'handshake'
-            scraper.get("https://www.nseindia.com", timeout=10)
-            
-            # Small random pause (mimicking human behavior)
-            time.sleep(random.uniform(1, 3)) 
-            
-            # Step B: Get the Option Chain data
-            response = scraper.get(url, timeout=15)
-            
-            if response.status_code == 200:
-                logger.info("Success! Data received.")
-                return response.json()
-            
-            logger.warning(f"Attempt {attempt + 1} failed with status: {response.status_code}")
-            
-        except Exception as e:
-            logger.error(f"Attempt {attempt + 1} error: {str(e)}")
+    url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
+    
+    try:
+        # Step 1: Visit home page to set cookies
+        scraper.get("https://www.nseindia.com", timeout=10)
+        time.sleep(random.uniform(1, 2))
         
-        # Wait longer before retrying (Exponential Backoff)
-        time.sleep(2 * (attempt + 1))
+        # Step 2: Fetch actual data
+        response = scraper.get(url, timeout=15)
         
-    return None
+        if response.status_code == 200:
+            raw_data = response.json()
+            
+            # Extract basic info
+            spot_price = raw_data['records']['underlyingValue']
+            timestamp = raw_data['records']['timestamp']
+            
+            # Logic: Filter for the nearest 10 strikes around the Spot Price
+            all_data = raw_data['filtered']['data']
+            # Sort by proximity to spot price
+            closest = sorted(all_data, key=lambda x: abs(x['strikePrice'] - spot_price))[:12]
+            # Re-sort numerically for the table
+            final_list = sorted(closest, key=lambda x: x['strikePrice'])
+            
+            return {
+                "status": "Success",
+                "price": spot_price,
+                "time": timestamp,
+                "data": final_list
+            }
+        else:
+            return {"status": "Error", "error": f"NSE Error: {response.status_code}"}
+            
+    except Exception as e:
+        logger.error(f"Fetch failed: {str(e)}")
+        return {"status": "Error", "error": "Connection Failed"}
 
 @app.route('/')
 def index():
-    api_url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-    raw_data = fetch_with_retry(api_url)
-    
-    if raw_data:
-        try:
-            # Process data for the table
-            processed = {
-                "time": raw_data['records']['timestamp'],
-                "price": raw_data['records']['underlyingValue'],
-                "data": raw_data['filtered']['data'][:12], # Show top 12 strikes
-                "status": "Success"
-            }
-            return render_template('index.html', data=processed)
-        except KeyError:
-            return render_template('index.html', data={"status": "Error", "error": "Data format mismatch from NSE."})
-    
-    return render_template('index.html', data={"status": "Error", "error": "NSE is currently blocking Render's IP. Try again in 5 minutes."})
+    result = fetch_nse_option_chain()
+    return render_template('index.html', data=result)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)

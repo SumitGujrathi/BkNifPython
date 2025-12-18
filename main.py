@@ -8,36 +8,35 @@ app = Flask(__name__)
 
 def get_nifty_options():
     try:
-        # 1. Connect to Nifty 50 Ticker (Yahoo Symbol for Nifty is ^NSEI)
+        # 1. Connect to Nifty 50 Ticker
         nifty = yf.Ticker("^NSEI")
         
         # 2. Get the current price (LTP)
         history = nifty.history(period="1d")
         if history.empty:
-            return {"status": "Error", "error": "Market data currently unavailable (Market might be closed)"}
+            return {"status": "Error", "error": "Market Data Unavailable (Check if market is open)"}
         
         spot_price = history['Close'].iloc[-1]
         
         # 3. Get all available expiry dates
         expiries = nifty.options
         if not expiries:
-            return {"status": "Error", "error": "No expiry dates found for Nifty options on Yahoo Finance"}
+            return {"status": "Error", "error": "No expiry dates found"}
             
         # 4. Fetch the nearest expiry
         chain = nifty.option_chain(expiries[0])
         calls = chain.calls
         puts = chain.puts
         
-        # 5. Merge Calls and Puts on Strike Price
+        # 5. Merge Calls and Puts
         df = pd.merge(calls[['strike', 'lastPrice', 'openInterest']], 
                      puts[['strike', 'lastPrice', 'openInterest']], 
-                     on='strike', how='inner', suffixes=('_CE', '_PE'))
+                     on='strike', how='inner', suffixes='_CE', '_PE')
         
-        # 6. Filter for strikes near the Spot Price (ATM +/- 250 points)
+        # 6. Filter ATM Strikes (+/- 5 strikes)
         atm_strike = round(spot_price / 50) * 50
         df = df[(df['strike'] >= atm_strike - 250) & (df['strike'] <= atm_strike + 250)]
         
-        # 7. Format for HTML
         records = []
         for _, row in df.iterrows():
             records.append({
@@ -51,11 +50,11 @@ def get_nifty_options():
         return {
             "status": "Success",
             "price": round(spot_price, 2),
-            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.datetime.now().strftime("%H:%M:%S"),
             "data": records
         }
     except Exception as e:
-        return {"status": "Error", "error": f"API Error: {str(e)}"}
+        return {"status": "Error", "error": str(e)}
 
 @app.route('/')
 def index():
@@ -63,6 +62,6 @@ def index():
     return render_template('index.html', data=result)
 
 if __name__ == "__main__":
-    # Render requires the app to listen on a port defined by the environment
-    port = int(os.environ.get("PORT", 5000))
+    # Render binds to a specific PORT environment variable
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)

@@ -1,5 +1,4 @@
 flask
-requests
-yfinance
+dhanhq
 pandas
-gunicorn
+requests

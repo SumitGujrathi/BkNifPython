@@ -1,102 +1,127 @@
 import os
+import requests
+from flask import Flask, render_template_string, request, redirect
 from datetime import datetime
-from flask import Flask, render_template_string, request
-from dhanhq import dhanhq
+import upstox_client
+from upstox_client.rest import ApiException
 
 app = Flask(__name__)
 
-# --- CREDENTIALS ---
-CLIENT_ID = "1109528371"
-ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MTU3Mjk5LCJpYXQiOjE3NjYwNzA4OTksInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA5NTI4MzcxIn0.ffxq74gMdPMpuARwjZcOhJ6B7bCewr1SnuuPUyM-uaXqYXEaQiPCkynWv4SZMXzoLLqPmvSgyJb4a4JVGVTlVQ"
+# --- YOUR UPSTOX CREDENTIALS ---
+API_KEY = "48ad120b-126c-4cfe-899e-6699a85874e5"
+API_SECRET = "4cnxn3sluq"
+REDIRECT_URI = "https://127.0.0.1:5000/"  # Must match what you put in Upstox Dashboard
 
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+# Global variable to store today's token
+# In a real app, you would save this to a file or database
+ACCESS_TOKEN = None
 
-# Index Mapping: Using integer IDs as per the latest Dhan SDK
-INDEX_MAP = {
-    "NIFTY": {"id": 13, "segment": "IDX_I"},
-    "BANKNIFTY": {"id": 25, "segment": "IDX_I"}
+# Index Mapping for Upstox
+INDEX_KEYS = {
+    "NIFTY": "NSE_INDEX|Nifty 50",
+    "BANKNIFTY": "NSE_INDEX|Nifty Bank"
 }
 
-def get_dhan_data(symbol):
+def get_upstox_data(symbol):
+    if not ACCESS_TOKEN:
+        return {"error": "No Access Token found. Please login first."}
+    
     try:
-        idx = INDEX_MAP.get(symbol)
+        config = upstox_client.Configuration()
+        config.access_token = ACCESS_TOKEN
+        api_client = upstox_client.ApiClient(config)
         
-        # 1. Fetch Expiry List (Explicit parameters)
-        expiry_response = dhan.expiry_list(
-            under_security_id=idx["id"],
-            under_exchange_segment=idx["segment"]
-        )
+        # 1. Fetch Option Chain
+        # Note: 'target_expiry' usually needs to be the next Thursday's date
+        # We are using a placeholder date; you should update this weekly
+        target_expiry = "2025-12-24" 
         
-        # Check if the response actually contains data
-        if expiry_response.get('status') != 'success' or not expiry_response.get('data'):
-            error_msg = expiry_response.get('remarks') or expiry_response.get('errors', {}).get('message', "No data returned")
-            return {"error": f"Dhan API Error: {error_msg}. Check if Data API is active in your Dhan Dashboard."}
+        api_instance = upstox_client.OptionsApi(api_client)
+        api_response = api_instance.get_put_call_option_chain(INDEX_KEYS[symbol], target_expiry)
         
-        latest_expiry = expiry_response['data'][0]
-        
-        # 2. Fetch Option Chain
-        oc_response = dhan.option_chain(
-            under_security_id=idx["id"],
-            under_exchange_segment=idx["segment"],
-            expiry=latest_expiry
-        )
-        
-        if oc_response.get('status') != 'success':
-            return {"error": "Option Chain fetch failed. Access Token might be restricted."}
+        if api_response.status != 'success':
+            return {"error": "Failed to fetch data from Upstox"}
 
-        data = oc_response['data']
-        spot = data.get('last_price', 0)
-        raw_oc = data.get('oc', {})
-
+        raw_data = api_response.data
+        spot = raw_data[0].underlying_spot_price if raw_data else 0
+        
         formatted = []
-        for strike, values in raw_oc.items():
-            ce = values.get('ce', {})
-            pe = values.get('pe', {})
+        for item in raw_data:
+            ce = item.call_options.market_data if item.call_options else {}
+            pe = item.put_options.market_data if item.put_options else {}
+            
             formatted.append({
-                "strikePrice": float(strike),
-                "calls": format_side(ce),
-                "puts": format_side(pe)
+                "strike": item.strike_price,
+                "ce": {"oi": ce.get('oi', 0), "ltp": ce.get('ltp', 0), "iv": round(ce.get('iv', 0)*100, 2)},
+                "pe": {"oi": pe.get('oi', 0), "ltp": pe.get('ltp', 0), "iv": round(pe.get('iv', 0)*100, 2)}
             })
-
-        formatted.sort(key=lambda x: x['strikePrice'])
-        return {"symbol": symbol, "spot": spot, "expiry": latest_expiry, "data": formatted, "time": datetime.now().strftime("%H:%M:%S")}
-
+            
+        return {"symbol": symbol, "spot": spot, "expiry": target_expiry, "data": formatted, "time": datetime.now().strftime("%H:%M:%S")}
     except Exception as e:
-        return {"error": f"System Exception: {str(e)}"}
-
-def format_side(side):
-    return {
-        "oi": side.get("oi", 0),
-        "changeInOi": side.get("oi", 0) - side.get("previous_oi", 0),
-        "volume": side.get("volume", 0),
-        "iv": round(side.get("implied_volatility", 0), 2),
-        "ltp": side.get("last_price", 0),
-        "change": round(side.get("last_price", 0) - side.get("previous_close_price", 0), 2)
-    }
+        return {"error": str(e)}
 
 @app.route('/')
 def index():
+    global ACCESS_TOKEN
+    # Check if this is a redirect back from Upstox login (contains ?code=...)
+    auth_code = request.args.get('code')
+    if auth_code:
+        # Exchange Code for Access Token
+        url = "https://api.upstox.com/v2/login/authorization/token"
+        headers = {'accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}
+        data = {
+            'code': auth_code,
+            'client_id': API_KEY,
+            'client_secret': API_SECRET,
+            'redirect_uri': REDIRECT_URI,
+            'grant_type': 'authorization_code'
+        }
+        res = requests.post(url, headers=headers, data=data).json()
+        ACCESS_TOKEN = res.get('access_token')
+        return redirect('/')
+
+    if not ACCESS_TOKEN:
+        login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri={REDIRECT_URI}"
+        return f'<h3>Upstox Token Expired</h3><a href="{login_url}" style="padding:10px; background:blue; color:white; text-decoration:none; border-radius:5px;">Click here to Login & Refresh Token</a>'
+
     symbol = request.args.get('symbol', 'NIFTY').upper()
-    result = get_dhan_data(symbol)
+    result = get_upstox_data(symbol)
     
     if "error" in result:
-        return f"""
-        <div style='font-family:sans-serif; padding:40px; border:2px solid red; margin:20px; border-radius:10px;'>
-            <h2 style='color:red;'>⚠️ API Error</h2>
-            <p><b>Reason:</b> {result['error']}</p>
-            <hr>
-            <h4>How to fix this:</h4>
-            <ul>
-                <li>Login to <b>web.dhan.co</b></li>
-                <li>Go to <b>My Profile</b> > <b>DhanHQ Trading APIs</b></li>
-                <li>Ensure <b>"Data APIs"</b> is toggled <b>ON</b> (it's a separate subscription from Trading API).</li>
-                <li>Verify your <b>Access Token</b> has not expired.</li>
-            </ul>
-        </div>
-        """
+        return f"<p style='color:red'>Error: {result['error']}</p>"
 
-    # ... (Keep the same HTML template from previous response)
-    return render_template_string(html_template, res=result) # Note: Refer to previous template
+    # HTML UI (Scannable Table)
+    html = """
+    <html>
+    <head>
+        <title>Upstox Option Chain</title>
+        <meta http-equiv="refresh" content="60">
+        <style>
+            body { font-family: sans-serif; font-size: 13px; margin:0; }
+            .header { background: #0037b4; color: white; padding: 15px; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; }
+            th { background: #eee; padding: 8px; border: 1px solid #ccc; }
+            td { padding: 8px; border: 1px solid #eee; text-align: center; }
+            .strike { background: #f9f9f9; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="header">Upstox Live: {{ res.symbol }} | Spot: {{ res.spot }} | {{ res.time }}</div>
+        <table>
+            <tr><th colspan="3">CALLS</th><th>STRIKE</th><th colspan="3">PUTS</th></tr>
+            <tr><th>OI</th><th>IV</th><th>LTP</th><th>Price</th><th>LTP</th><th>IV</th><th>OI</th></tr>
+            {% for r in res.data %}
+            <tr>
+                <td>{{ r.ce.oi }}</td><td>{{ r.ce.iv }}</td><td style="color:green"><b>{{ r.ce.ltp }}</b></td>
+                <td class="strike">{{ r.strike }}</td>
+                <td style="color:red"><b>{{ r.pe.ltp }}</b></td><td>{{ r.pe.iv }}</td><td>{{ r.pe.oi }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </body>
+    </html>
+    """
+    return render_template_string(html, res=result)
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    app.run(host='0.0.0.0', port=10000)

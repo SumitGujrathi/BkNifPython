@@ -1,5 +1,4 @@
 flask
-yfinance==0.2.52
+yfinance
 pandas
 gunicorn
-websockets>=13.0

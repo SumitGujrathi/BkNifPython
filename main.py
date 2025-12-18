@@ -1,61 +1,58 @@
-import cloudscraper
-import time
-import random
-import logging
+import yfinance as yf
+import pandas as pd
 from flask import Flask, render_template
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import datetime
 
 app = Flask(__name__)
 
-def fetch_nse_option_chain():
-    scraper = cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
-    )
-    
-    url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-    
+def get_nifty_options():
     try:
-        # Step 1: Establish session
-        scraper.get("https://www.nseindia.com", timeout=10)
-        time.sleep(random.uniform(1, 2))
+        # 1. Connect to Nifty 50 Ticker
+        nifty = yf.Ticker("^NSEI")
         
-        # Step 2: Fetch data
-        response = scraper.get(url, timeout=15)
+        # 2. Get the current price (LTP)
+        spot_price = nifty.history(period="1d")['Close'].iloc[-1]
         
-        if response.status_code == 200:
-            raw_data = response.json()
+        # 3. Get all available expiry dates
+        expiries = nifty.options
+        if not expiries:
+            return {"status": "Error", "error": "No expiry dates found"}
             
-            # --- SAFETY CHECK: Verify if 'records' exists ---
-            if 'records' not in raw_data:
-                logger.error("NSE sent a success code but NO DATA (empty records).")
-                return {"status": "Error", "error": "NSE is sending empty data. The API might be down or throttling Render."}
+        # 4. Fetch the nearest expiry (the first one in the list)
+        chain = nifty.option_chain(expiries[0])
+        calls = chain.calls
+        puts = chain.puts
+        
+        # 5. Merge Calls and Puts on Strike Price
+        df = pd.merge(calls[['strike', 'lastPrice', 'openInterest']], 
+                     puts[['strike', 'lastPrice', 'openInterest']], 
+                     on='strike', how='inner', suffixes=('_CE', '_PE'))
+        
+        # 6. Filter for strikes near the Spot Price (ATM +/- 5 strikes)
+        atm_strike = round(spot_price / 50) * 50
+        df = df[(df['strike'] >= atm_strike - 250) & (df['strike'] <= atm_strike + 250)]
+        
+        # 7. Format for HTML
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "CE": {"openInterest": int(row['openInterest_CE']), "lastPrice": row['lastPrice_CE']},
+                "strikePrice": row['strike'],
+                "PE": {"lastPrice": row['lastPrice_PE'], "openInterest": int(row['openInterest_PE'])}
+            })
             
-            spot_price = raw_data['records']['underlyingValue']
-            timestamp = raw_data['records']['timestamp']
-            all_data = raw_data['filtered']['data']
-            
-            # Filter closest 12 strikes
-            closest = sorted(all_data, key=lambda x: abs(x['strikePrice'] - spot_price))[:12]
-            final_list = sorted(closest, key=lambda x: x['strikePrice'])
-            
-            return {
-                "status": "Success",
-                "price": spot_price,
-                "time": timestamp,
-                "data": final_list
-            }
-        else:
-            return {"status": "Error", "error": f"NSE Blocked Request (Status {response.status_code})"}
-            
+        return {
+            "status": "Success",
+            "price": round(spot_price, 2),
+            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "data": records
+        }
     except Exception as e:
-        logger.error(f"Critical Failure: {str(e)}")
-        return {"status": "Error", "error": "Connection error or invalid data format."}
+        return {"status": "Error", "error": f"Yahoo API Error: {str(e)}"}
 
 @app.route('/')
 def index():
-    result = fetch_nse_option_chain()
+    result = get_nifty_options()
     return render_template('index.html', data=result)
 
 if __name__ == "__main__":

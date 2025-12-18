@@ -14,7 +14,7 @@ CLIENT_ID = os.environ.get("DHAN_CLIENT_ID", "1109528371")
 ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MTU3Mjk5LCJpYXQiOjE3NjYwNzA4OTksInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA5NTI4MzcxIn0.ffxq74gMdPMpuARwjZcOhJ6B7bCewr1SnuuPUyM-uaXqYXEaQiPCkynWv4SZMXzoLLqPmvSgyJb4a4JVGVTlVQ")
 
 # Initialize Dhan Client
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+dhan = dhanhq("1109528371", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MTU3Mjk5LCJpYXQiOjE3NjYwNzA4OTksInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA5NTI4MzcxIn0.ffxq74gMdPMpuARwjZcOhJ6B7bCewr1SnuuPUyM-uaXqYXEaQiPCkynWv4SZMXzoLLqPmvSgyJb4a4JVGVTlVQ")
 
 # Mapping for Index Security IDs in Dhan (NSE Indices)
 INDEX_MAP = {

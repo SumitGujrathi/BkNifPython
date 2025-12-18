@@ -1,160 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NIFTY Option Chain Dashboard</title>
+    <meta http-equiv="refresh" content="60">
+    <title>NIFTY Option Chain Tracker</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; }
-        .dashboard-header { text-align: center; margin-bottom: 20px; padding: 10px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .data-summary { display: flex; justify-content: center; gap: 30px; margin-top: 10px; font-size: 1.1em; }
-        .data-summary strong { color: #3f51b5; }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 20px; }
-        .data-table th, .data-table td { padding: 8px; border: 1px solid #ddd; text-align: right; }
-        .data-table th { background-color: #3f51b5; color: white; position: sticky; top: 0; }
-        /* Highlighting for In-The-Money (ITM) */
-        .itm-call { background-color: #e0f7fa; } /* Light Blue for Call ITM */
-        .itm-put { background-color: #fce4ec; } /* Light Pink for Put ITM */
-        /* Center column for Strike Price */
-        .strike-price { background-color: #ffe0b2; font-weight: bold; text-align: center !important; }
-        #last-updated { font-size: 12px; color: #555; margin-top: 10px; }
-        .table-container { overflow-x: auto; } 
+        body { font-family: sans-serif; text-align: center; background: #f4f4f4; }
+        table { margin: 20px auto; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border: 1px solid #ddd; }
+        .price { font-size: 24px; color: green; font-weight: bold; }
     </style>
 </head>
 <body>
+    <h1>NIFTY 50 Live Data</h1>
+    <p>Last Updated: {{ data.time }}</p>
+    <p class="price">Spot Price: {{ data.price }}</p>
 
-    <div class="dashboard-header">
-        <h2>NIFTY Option Chain (Live)</h2>
-        <div class="data-summary">
-            <p>Spot Price: <strong><span id="nifty-spot">Loading...</span></strong></p>
-            <p>Current Expiry: <strong><span id="expiry-date">Loading...</span></strong></p>
-            <p>Put-Call Ratio (PCR): <strong><span id="pcr-value">Loading...</span></strong></p>
-        </div>
-        <p id="last-updated"></p>
-    </div>
-
-    <div class="table-container">
-        <table id="option-chain-table" class="data-table">
-            <thead>
-                <tr>
-                    <th colspan="7">CALLS (CE)</th>
-                    <th class="strike-price" rowspan="2">Strike Price</th>
-                    <th colspan="7">PUTS (PE)</th>
-                </tr>
-                <tr>
-                    <th>OI Change</th>
-                    <th>OI</th>
-                    <th>Volume</th>
-                    <th>IV</th>
-                    <th>LTP</th>
-                    <th>Bid Price</th>
-                    <th>Ask Price</th>
-                    <th>Bid Price</th>
-                    <th>Ask Price</th>
-                    <th>LTP</th>
-                    <th>IV</th>
-                    <th>Volume</th>
-                    <th>OI</th>
-                    <th>OI Change</th>
-                </tr>
-            </thead>
-            <tbody>
-                </tbody>
-        </table>
-    </div>
-
-    <script>
-        // CRITICAL: Replace this with your actual deployed Render URL.
-        const RENDER_DOMAIN = 'https://bknifsumit.onrender.com';
-        const API_URL = RENDER_DOMAIN + '/api/optionchain'; 
-        const REFRESH_INTERVAL_MS = 60000; // 1 minute
-
-        async function fetchOptionChainData() {
-            try {
-                const response = await fetch(API_URL);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-                
-                // If the error message is returned from the backend JSON, handle it
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                renderTable(data);
-                document.getElementById('last-updated').textContent = `Last Updated: ${new Date().toLocaleTimeString()} (Next refresh in 60s)`;
-
-            } catch (error) {
-                console.error("Error fetching data:", error);
-                // Display the error in the header if the fetch fails
-                document.getElementById('nifty-spot').innerHTML = '<span style="color: red;">ERROR</span>';
-                document.getElementById('expiry-date').textContent = 'N/A';
-                document.getElementById('pcr-value').textContent = 'N/A';
-                document.getElementById('last-updated').textContent = `Data Fetch Failed: ${error.message}. Retrying...`;
-            }
-        }
-
-        function renderTable(data) {
-            const tbody = document.querySelector('#option-chain-table tbody');
-            tbody.innerHTML = ''; // Clear existing data
-
-            // 1. Get Summary Data
-            const underlyingValue = data.underlyingValue ? data.underlyingValue.toFixed(2) : 'N/A';
-            const expiryDate = data.expiryDate || 'N/A';
-            const pcrValue = data.pcr ? data.pcr.toFixed(4) : 'N/A';
-            const chainData = data.chainData || [];
-
-            // Update Header Summary
-            document.getElementById('nifty-spot').textContent = underlyingValue;
-            document.getElementById('expiry-date').textContent = expiryDate;
-            document.getElementById('pcr-value').textContent = pcrValue;
-
-            // Helper functions for formatting
-            const fmt = (val) => (val || 0).toLocaleString('en-IN');
-            const fmtP = (val) => (val || 0).toFixed(2);
-
-            // 2. Render Table Rows
-            const spotPrice = parseFloat(underlyingValue);
-            chainData.forEach(item => {
-                const tr = document.createElement('tr');
-                const strikePrice = item.strikePrice;
-                
-                // Determine ITM/OTM class for visual highlighting
-                const isITM_CE = strikePrice < spotPrice;
-                const isITM_PE = strikePrice > spotPrice;
-
-                const CE = item.CE || {}; 
-                const PE = item.PE || {};
-
-                tr.innerHTML += `
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmt(CE.changeinOpenInterest)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmt(CE.openInterest)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmt(CE.totalTradedVolume)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmtP(CE.impliedVolatility)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmtP(CE.lastPrice)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmtP(CE.bidprice)}</td>
-                    <td class="${isITM_CE ? 'itm-call' : ''}">${fmtP(CE.askPrice)}</td>
-                    
-                    <td class="strike-price">${strikePrice.toLocaleString('en-IN')}</td>
-                    
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmtP(PE.bidprice)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmtP(PE.askPrice)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmtP(PE.lastPrice)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmtP(PE.impliedVolatility)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmt(PE.totalTradedVolume)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmt(PE.openInterest)}</td>
-                    <td class="${isITM_PE ? 'itm-put' : ''}">${fmt(PE.changeinOpenInterest)}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-        
-        // Initial load and setup the refresh interval
-        fetchOptionChainData(); 
-        setInterval(fetchOptionChainData, REFRESH_INTERVAL_MS);
-
-    </script>
-
+    <table>
+        <tr>
+            <th>Call OI</th>
+            <th>Strike</th>
+            <th>Put OI</th>
+        </tr>
+        {% for row in data.data %}
+        <tr>
+            <td>{{ row.CE.openInterest }}</td>
+            <td><strong>{{ row.strikePrice }}</strong></td>
+            <td>{{ row.PE.openInterest }}</td>
+        </tr>
+        {% endfor %}
+    </table>
 </body>
 </html>

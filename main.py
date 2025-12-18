@@ -31,7 +31,7 @@ def get_nifty_options():
         # 5. Merge Calls and Puts
         df = pd.merge(calls[['strike', 'lastPrice', 'openInterest']], 
                      puts[['strike', 'lastPrice', 'openInterest']], 
-                     on='strike', how='inner', suffixes='_CE', '_PE')
+                     on='strike', how='inner', suffixes=('_CE', '_PE'))
         
         # 6. Filter ATM Strikes (+/- 5 strikes)
         atm_strike = round(spot_price / 50) * 50

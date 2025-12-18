@@ -1,4 +1,3 @@
 flask
-nsepython
-pandas
+requests
 gunicorn

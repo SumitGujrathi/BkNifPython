@@ -6,31 +6,38 @@ import datetime
 
 app = Flask(__name__)
 
+# Fake browser headers to prevent Yahoo from blocking Render
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
 def get_live_data():
     try:
-        # 1. Fetch Nifty data using yahooquery
-        # Yahoo Symbol for Nifty 50 is ^NSEI
-        nifty = Ticker('^NSEI')
+        # Use a real User-Agent to avoid the "str has no attribute empty" error
+        nifty = Ticker('^NSEI', headers=HEADERS)
         
-        # 2. Get the Option Chain (all expiries)
-        # yahooquery returns a dataframe directly
+        # Get the Option Chain
         df = nifty.option_chain
         
-        if df is None or df.empty:
-            return {"status": "Error", "error": "Yahoo data is temporarily offline. Try again in 1 min."}
+        # FIX: Check if df is a string (error message) instead of a DataFrame
+        if isinstance(df, str) or df is None or (isinstance(df, pd.DataFrame) and df.empty):
+            return {"status": "Error", "error": "Yahoo Finance blocked the request. Try again in 30s."}
 
-        # 3. Get the current Spot Price for centering the table
-        price_data = nifty.price['^NSEI']
-        spot_price = price_data.get('regularMarketPrice', 0)
+        # Get Spot Price
+        price_dict = nifty.price
+        if '^NSEI' not in price_dict:
+             return {"status": "Error", "error": "Could not fetch spot price."}
+             
+        spot_price = price_dict['^NSEI'].get('regularMarketPrice', 0)
         
-        # 4. Filter for the nearest Expiry (it's the first level of the index)
+        # Get nearest expiry
         all_expiries = df.index.get_level_values('expiration').unique()
         nearest_expiry = all_expiries[0]
         
-        # Filter dataframe for just this expiry
+        # Filter for current expiry
         current_chain = df.xs(nearest_expiry, level='expiration')
         
-        # 5. Split into Calls and Puts and Merge
+        # Process Calls and Puts
         calls = current_chain[current_chain['optionType'] == 'calls']
         puts = current_chain[current_chain['optionType'] == 'puts']
         
@@ -40,11 +47,10 @@ def get_live_data():
             on='strike', how='inner', suffixes=('_CE', '_PE')
         )
 
-        # 6. Center the table around the ATM (At-The-Money) strike
+        # Filter strikes around the Spot price
         atm_strike = round(spot_price / 50) * 50
-        final_df = merged[(merged['strike'] >= atm_strike - 300) & (merged['strike'] <= atm_strike + 300)]
+        final_df = merged[(merged['strike'] >= atm_strike - 250) & (merged['strike'] <= atm_strike + 250)]
 
-        # 7. Format for HTML
         records = []
         for _, row in final_df.iterrows():
             records.append({
@@ -61,7 +67,7 @@ def get_live_data():
             "data": records
         }
     except Exception as e:
-        return {"status": "Error", "error": f"Bridge Error: {str(e)}"}
+        return {"status": "Error", "error": f"Internal Error: {str(e)}"}
 
 @app.route('/')
 def index():

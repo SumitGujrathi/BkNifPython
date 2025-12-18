@@ -1,20 +1,17 @@
 import os
-import io
-import csv
 from datetime import datetime
-from flask import Flask, render_template_string, request, make_response
+from flask import Flask, render_template_string, request
 from dhanhq import dhanhq
 
 app = Flask(__name__)
 
-# --- YOUR PERSONAL DHAN CREDENTIALS ---
+# --- CREDENTIALS ---
 CLIENT_ID = "1109528371"
 ACCESS_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MTU3Mjk5LCJpYXQiOjE3NjYwNzA4OTksInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA5NTI4MzcxIn0.ffxq74gMdPMpuARwjZcOhJ6B7bCewr1SnuuPUyM-uaXqYXEaQiPCkynWv4SZMXzoLLqPmvSgyJb4a4JVGVTlVQ"
 
-# Initialize Dhan Client
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
-# Instrument IDs for Dhan (Nifty = 13, Bank Nifty = 25)
+# Index Mapping: Using integer IDs as per the latest Dhan SDK
 INDEX_MAP = {
     "NIFTY": {"id": 13, "segment": "IDX_I"},
     "BANKNIFTY": {"id": 25, "segment": "IDX_I"}
@@ -24,17 +21,28 @@ def get_dhan_data(symbol):
     try:
         idx = INDEX_MAP.get(symbol)
         
-        # 1. Fetch nearest Expiry
-        expiry_response = dhan.expiry_list(idx["id"], idx["segment"])
-        if expiry_response.get('status') != 'success':
-            return {"error": "Could not fetch expiry dates from Dhan."}
+        # 1. Fetch Expiry List (Explicit parameters)
+        expiry_response = dhan.expiry_list(
+            under_security_id=idx["id"],
+            under_exchange_segment=idx["segment"]
+        )
+        
+        # Check if the response actually contains data
+        if expiry_response.get('status') != 'success' or not expiry_response.get('data'):
+            error_msg = expiry_response.get('remarks') or expiry_response.get('errors', {}).get('message', "No data returned")
+            return {"error": f"Dhan API Error: {error_msg}. Check if Data API is active in your Dhan Dashboard."}
         
         latest_expiry = expiry_response['data'][0]
         
         # 2. Fetch Option Chain
-        oc_response = dhan.option_chain(idx["id"], idx["segment"], latest_expiry)
+        oc_response = dhan.option_chain(
+            under_security_id=idx["id"],
+            under_exchange_segment=idx["segment"],
+            expiry=latest_expiry
+        )
+        
         if oc_response.get('status') != 'success':
-            return {"error": "Option Chain fetch failed."}
+            return {"error": "Option Chain fetch failed. Access Token might be restricted."}
 
         data = oc_response['data']
         spot = data.get('last_price', 0)
@@ -44,32 +52,27 @@ def get_dhan_data(symbol):
         for strike, values in raw_oc.items():
             ce = values.get('ce', {})
             pe = values.get('pe', {})
-            
             formatted.append({
                 "strikePrice": float(strike),
-                "calls": {
-                    "oi": ce.get("oi", 0),
-                    "changeInOi": ce.get("oi", 0) - ce.get("previous_oi", 0),
-                    "volume": ce.get("volume", 0),
-                    "iv": round(ce.get("implied_volatility", 0), 2),
-                    "ltp": ce.get("last_price", 0),
-                    "change": round(ce.get("last_price", 0) - ce.get("previous_close_price", 0), 2)
-                },
-                "puts": {
-                    "oi": pe.get("oi", 0),
-                    "changeInOi": pe.get("oi", 0) - pe.get("previous_oi", 0),
-                    "volume": pe.get("volume", 0),
-                    "iv": round(pe.get("implied_volatility", 0), 2),
-                    "ltp": pe.get("last_price", 0),
-                    "change": round(pe.get("last_price", 0) - pe.get("previous_close_price", 0), 2)
-                }
+                "calls": format_side(ce),
+                "puts": format_side(pe)
             })
 
         formatted.sort(key=lambda x: x['strikePrice'])
         return {"symbol": symbol, "spot": spot, "expiry": latest_expiry, "data": formatted, "time": datetime.now().strftime("%H:%M:%S")}
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"System Exception: {str(e)}"}
+
+def format_side(side):
+    return {
+        "oi": side.get("oi", 0),
+        "changeInOi": side.get("oi", 0) - side.get("previous_oi", 0),
+        "volume": side.get("volume", 0),
+        "iv": round(side.get("implied_volatility", 0), 2),
+        "ltp": side.get("last_price", 0),
+        "change": round(side.get("last_price", 0) - side.get("previous_close_price", 0), 2)
+    }
 
 @app.route('/')
 def index():
@@ -77,68 +80,23 @@ def index():
     result = get_dhan_data(symbol)
     
     if "error" in result:
-        return f"<div style='color:red; padding:20px;'><h3>API Error</h3>{result['error']}</div>"
-
-    html = """
-    <html>
-    <head>
-        <title>Dhan Live Chain</title>
-        <meta http-equiv="refresh" content="60">
-        <style>
-            body { font-family: sans-serif; font-size: 12px; margin: 0; background: #f4f4f4; }
-            .header { background: #121212; color: #00d09c; padding: 15px; display: flex; justify-content: space-between; }
-            table { width: 100%; border-collapse: collapse; background: white; }
-            th { background: #262626; color: white; padding: 8px; border: 1px solid #444; }
-            td { padding: 8px; border: 1px solid #eee; text-align: center; }
-            .strike { background: #f9f9f9; font-weight: bold; }
-            .ce { background: #f0fff4; } .pe { background: #fff5f5; }
-            .pos { color: green; } .neg { color: red; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <b>{{ res.symbol }} Chain</b>
-            <span>Spot: {{ res.spot }} | Expiry: {{ res.expiry }} | Last Sync: {{ res.time }}</span>
+        return f"""
+        <div style='font-family:sans-serif; padding:40px; border:2px solid red; margin:20px; border-radius:10px;'>
+            <h2 style='color:red;'>⚠️ API Error</h2>
+            <p><b>Reason:</b> {result['error']}</p>
+            <hr>
+            <h4>How to fix this:</h4>
+            <ul>
+                <li>Login to <b>web.dhan.co</b></li>
+                <li>Go to <b>My Profile</b> > <b>DhanHQ Trading APIs</b></li>
+                <li>Ensure <b>"Data APIs"</b> is toggled <b>ON</b> (it's a separate subscription from Trading API).</li>
+                <li>Verify your <b>Access Token</b> has not expired.</li>
+            </ul>
         </div>
-        <form method="GET" style="padding:10px;">
-            <select name="symbol" onchange="this.form.submit()">
-                <option value="NIFTY" {% if res.symbol == 'NIFTY' %}selected{% endif %}>NIFTY</option>
-                <option value="BANKNIFTY" {% if res.symbol == 'BANKNIFTY' %}selected{% endif %}>BANKNIFTY</option>
-            </select>
-        </form>
-        <table>
-            <thead>
-                <tr><th colspan="6">CALLS</th><th>STRIKE</th><th colspan="6">PUTS</th></tr>
-                <tr>
-                    <th>OI</th><th>Chng OI</th><th>Vol</th><th>IV</th><th>LTP</th><th>Chng</th>
-                    <th>Price</th>
-                    <th>LTP</th><th>Chng</th><th>IV</th><th>Vol</th><th>Chng OI</th><th>OI</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in res.data %}
-                <tr>
-                    <td class="ce">{{ r.calls.oi }}</td>
-                    <td class="ce {{ 'pos' if r.calls.changeInOi > 0 else 'neg' }}">{{ r.calls.changeInOi }}</td>
-                    <td class="ce">{{ r.calls.volume }}</td>
-                    <td class="ce">{{ r.calls.iv }}</td>
-                    <td class="ce"><b>{{ r.calls.ltp }}</b></td>
-                    <td class="ce {{ 'pos' if r.calls.change > 0 else 'neg' }}">{{ r.calls.change }}</td>
-                    <td class="strike">{{ r.strikePrice }}</td>
-                    <td class="pe"><b>{{ r.puts.ltp }}</b></td>
-                    <td class="pe {{ 'pos' if r.puts.change > 0 else 'neg' }}">{{ r.puts.change }}</td>
-                    <td class="pe">{{ r.puts.iv }}</td>
-                    <td class="pe">{{ r.puts.volume }}</td>
-                    <td class="pe {{ 'pos' if r.puts.changeInOi > 0 else 'neg' }}">{{ r.puts.changeInOi }}</td>
-                    <td class="pe">{{ r.puts.oi }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """
-    return render_template_string(html, res=result)
+        """
+
+    # ... (Keep the same HTML template from previous response)
+    return render_template_string(html_template, res=result) # Note: Refer to previous template
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))

@@ -1,48 +1,49 @@
 import requests
+import logging
 from flask import Flask, render_template
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Headers to mimic a real Chrome browser
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nseindia.com/'
-}
+# Replace with your actual ScraperAPI key
+SCRAPER_API_KEY = 'YOUR_SCRAPER_API_KEY_HERE' 
 
-def get_nifty_data():
-    session = requests.Session()
+def fetch_nse_data():
+    target_url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
+    
+    # We send the request to ScraperAPI instead of directly to NSE
+    proxy_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}"
+    
     try:
-        # Step 1: Visit the homepage to get Cookies (Crucial for NSE)
-        session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
+        logger.info("Fetching data via Proxy...")
+        response = requests.get(proxy_url, timeout=30)
         
-        # Step 2: Now fetch the Option Chain API
-        url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-        response = session.get(url, headers=HEADERS, timeout=10)
-        
+        logger.info(f"Proxy Response Status: {response.status_code}")
+
         if response.status_code == 200:
-            payload = response.json()
-            timestamp = payload['records']['timestamp']
-            underlying_value = payload['records']['underlyingValue']
-            # Filter top 10 rows (closest to ATM)
-            raw_data = payload['filtered']['data'][:10]
+            json_data = response.json()
+            # Filter top 10 strikes around the spot price
+            all_data = json_data['filtered']['data']
             
             return {
-                "time": timestamp,
-                "price": underlying_value,
-                "data": raw_data
+                "time": json_data['records']['timestamp'],
+                "price": json_data['records']['underlyingValue'],
+                "data": all_data[:10],
+                "status": "Success"
             }
         else:
-            return {"error": f"NSE returned status code: {response.status_code}"}
-            
+            return {"status": "Error", "error": f"Proxy returned code: {response.status_code}. Check API key/balance."}
+
     except Exception as e:
-        return {"error": f"Connection Error: {str(e)}"}
+        logger.error(f"Error: {str(e)}")
+        return {"status": "Error", "error": str(e)}
 
 @app.route('/')
 def index():
-    data = get_nifty_data()
-    return render_template('index.html', data=data)
+    result = fetch_nse_data()
+    return render_template('index.html', data=result)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)

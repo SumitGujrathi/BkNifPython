@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def fetch_nse_option_chain():
-    # Use cloudscraper to bypass NSE's bot protection
     scraper = cloudscraper.create_scraper(
         browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
     )
@@ -18,25 +17,27 @@ def fetch_nse_option_chain():
     url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
     
     try:
-        # Step 1: Visit home page to set cookies
+        # Step 1: Establish session
         scraper.get("https://www.nseindia.com", timeout=10)
         time.sleep(random.uniform(1, 2))
         
-        # Step 2: Fetch actual data
+        # Step 2: Fetch data
         response = scraper.get(url, timeout=15)
         
         if response.status_code == 200:
             raw_data = response.json()
             
-            # Extract basic info
+            # --- SAFETY CHECK: Verify if 'records' exists ---
+            if 'records' not in raw_data:
+                logger.error("NSE sent a success code but NO DATA (empty records).")
+                return {"status": "Error", "error": "NSE is sending empty data. The API might be down or throttling Render."}
+            
             spot_price = raw_data['records']['underlyingValue']
             timestamp = raw_data['records']['timestamp']
-            
-            # Logic: Filter for the nearest 10 strikes around the Spot Price
             all_data = raw_data['filtered']['data']
-            # Sort by proximity to spot price
+            
+            # Filter closest 12 strikes
             closest = sorted(all_data, key=lambda x: abs(x['strikePrice'] - spot_price))[:12]
-            # Re-sort numerically for the table
             final_list = sorted(closest, key=lambda x: x['strikePrice'])
             
             return {
@@ -46,11 +47,11 @@ def fetch_nse_option_chain():
                 "data": final_list
             }
         else:
-            return {"status": "Error", "error": f"NSE Error: {response.status_code}"}
+            return {"status": "Error", "error": f"NSE Blocked Request (Status {response.status_code})"}
             
     except Exception as e:
-        logger.error(f"Fetch failed: {str(e)}")
-        return {"status": "Error", "error": "Connection Failed"}
+        logger.error(f"Critical Failure: {str(e)}")
+        return {"status": "Error", "error": "Connection error or invalid data format."}
 
 @app.route('/')
 def index():

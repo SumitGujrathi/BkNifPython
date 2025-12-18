@@ -1,66 +1,72 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta http-equiv="refresh" content="60">
-    <title>NIFTY Option Chain Live</title>
+    <title>Live NIFTY Option Chain</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; text-align: center; padding: 20px; }
-        .container { background: white; max-width: 900px; margin: auto; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        body { font-family: sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .dashboard { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .spot-price { font-size: 28px; color: #2c3e50; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #007bff; color: white; padding: 12px; }
-        td { border: 1px solid #ddd; padding: 10px; font-weight: 500; }
-        .ce-col { background: #e7f3ff; }
-        .pe-col { background: #fff1f1; }
-        .strike-col { background: #f8f9fa; font-weight: bold; font-size: 1.1em; color: #333; }
-        .status-ok { color: green; font-weight: bold; }
-        .status-err { color: red; font-weight: bold; }
+        th { background: #34495e; color: white; padding: 12px; font-size: 14px; }
+        td { border: 1px solid #dfe6e9; padding: 10px; text-align: center; font-size: 15px; }
+        .strike-price { background: #f1f2f6; font-weight: bold; color: #2980b9; }
+        .ce-cell { background-color: #f7fff7; }
+        .pe-cell { background-color: #fff7f7; }
+        .error-msg { color: #d63031; padding: 20px; border: 1px solid #fab1a0; background: #fff5f5; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>NIFTY Option Chain (Live)</h1>
-        
-        {% if data.status == "Success" %}
-            <p>Market Status: <span class="status-ok">Connected</span></p>
-            <p>Last Updated: <strong>{{ data.time }}</strong></p>
-            <p>NIFTY Spot: <span style="font-size: 24px; color: #28a745;">{{ data.price }}</span></p>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th colspan="2">CALLS (CE)</th>
-                        <th>STRIKE</th>
-                        <th colspan="2">PUTS (PE)</th>
-                    </tr>
-                    <tr>
-                        <th>OI</th>
-                        <th>LTP</th>
-                        <th>Price</th>
-                        <th>LTP</th>
-                        <th>OI</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in data.data %}
-                    <tr>
-                        <td class="ce-col">{{ row.CE.openInterest if row.CE else '-' }}</td>
-                        <td class="ce-col">{{ row.CE.lastPrice if row.CE else '-' }}</td>
-                        <td class="strike-col">{{ row.strikePrice }}</td>
-                        <td class="pe-col">{{ row.PE.lastPrice if row.PE else '-' }}</td>
-                        <td class="pe-col">{{ row.PE.openInterest if row.PE else '-' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% else %}
-            <div class="status-err">
-                <h3>Error Loading Data</h3>
-                <p>{{ data.error }}</p>
-            </div>
-        {% endif %}
-
-        <hr>
-        <p style="font-size: 12px; color: #666;">Page auto-refreshes every 60 seconds.</p>
+<div class="dashboard">
+    {% if data.status == "Success" %}
+    <div class="header">
+        <div>
+            <h1 style="margin:0;">NIFTY 50</h1>
+            <small>Updated: {{ data.time }}</small>
+        </div>
+        <div class="spot-price">₹ {{ data.price }}</div>
     </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th colspan="2" style="background:#27ae60;">CALLS (CE)</th>
+                <th style="background:#2980b9;">STRIKE</th>
+                <th colspan="2" style="background:#c0392b;">PUTS (PE)</th>
+            </tr>
+            <tr>
+                <th>OI</th>
+                <th>LTP</th>
+                <th>-</th>
+                <th>LTP</th>
+                <th>OI</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.data %}
+            <tr>
+                <td class="ce-cell">{{ row.CE.openInterest if row.CE else '0' }}</td>
+                <td class="ce-cell">{{ row.CE.lastPrice if row.CE else '0' }}</td>
+                
+                <td class="strike-price">{{ row.strikePrice }}</td>
+                
+                <td class="pe-cell">{{ row.PE.lastPrice if row.PE else '0' }}</td>
+                <td class="pe-cell">{{ row.PE.openInterest if row.PE else '0' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="error-msg">
+        <h2>Data Temporarily Unavailable</h2>
+        <p>{{ data.error }}</p>
+        <p>Please try refreshing in 30 seconds. NSE may be busy.</p>
+    </div>
+    {% endif %}
+</div>
+
 </body>
 </html>

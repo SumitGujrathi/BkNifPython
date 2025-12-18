@@ -1,4 +1,3 @@
 flask
 dhanhq
 pandas
-requests

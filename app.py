@@ -4,7 +4,7 @@ import requests
 app = Flask(__name__)
 
 # Create a free account on scraperapi.com to get your key
-SCRAPER_API_KEY = "YOUR_SCRAPER_API_KEY" 
+SCRAPER_API_KEY = "3c70d6f3305a1162da62fe697e9885ee" 
 
 def fetch_nse_data():
     target_url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"

@@ -3,118 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Made by Sumit Nifty Option Chain</title>
+    <title>Complete Nifty Option Chain</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 20px; }
-        h2 { text-align: center; color: #333; }
-        .controls { display: flex; justify-content: space-between; margin-bottom: 10px; max-width: 900px; margin: 0 auto 10px auto; }
-        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; }
-        button:hover { background-color: #0056b3; }
-        table { width: 100%; max-width: 900px; margin: 0 auto; border-collapse: collapse; background: white; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
-        th { background-color: #343a40; color: white; }
-        .call-col { background-color: #e8f5e9; } /* Light green for Calls */
-        .put-col { background-color: #ffebee; }  /* Light red for Puts */
-        .strike-col { font-weight: bold; background-color: #fff9c4; }
-        #status { font-size: 0.9em; color: gray; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 15px; }
+        h2 { text-align: center; color: #212529; margin-bottom: 5px; }
+        .info-bar { display: flex; justify-content: space-between; align-items: center; max-width: 100%; margin-bottom: 12px; }
+        #status { font-weight: 500; color: #495057; }
+        .btn-download { background-color: #198754; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-download:hover { background-color: #157347; }
+        
+        .table-container { overflow-x: auto; max-height: 80vh; background: white; border: 1px solid #dee2e6; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: right; white-space: nowrap; }
+        
+        th, td { padding: 6px 8px; border: 1px solid #e9ecef; }
+        thead th { position: sticky; top: 0; z-index: 2; background-color: #212529; color: white; text-align: center; }
+        .sub-header th { top: 27px; background-color: #343a40; font-size: 11px; }
+        
+        .call-head { background-color: #198754 !important; }
+        .put-head { background-color: #dc3545 !important; }
+        .strike-head { background-color: #ffc107 !important; color: black !important; }
+        
+        .call-col { background-color: #f1f9f5; }
+        .put-col { background-color: #fdf2f2; }
+        .strike-col { font-weight: bold; text-align: center; background-color: #fff8e1; position: sticky; left: 0; z-index: 1; }
+        
+        .pos { color: #198754; font-weight: bold; }
+        .neg { color: #dc3545; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>Made by Sumit Nifty Option Chain</h2>
+    <h2>Nifty 50 Complete Option Chain</h2>
     
-    <div class="controls">
-        <span id="status">Fetching data...</span>
-        <button onclick="downloadCSV()">Download as CSV</button>
+    <div class="info-bar">
+        <span id="status">Fetching Live Data from NSE...</span>
+        <button class="btn-download" onclick="downloadCSV()">Export Full Chain (.CSV)</button>
     </div>
 
-    <table id="option-chain-table">
-        <thead>
-            <tr>
-                <th colspan="2">CALLS</th>
-                <th>STRIKE PRICE</th>
-                <th colspan="2">PUTS</th>
-            </tr>
-            <tr>
-                <th>Open Interest (OI)</th>
-                <th>Last Price (LTP)</th>
-                <th>(NIFTY)</th>
-                <th>Last Price (LTP)</th>
-                <th>Open Interest (OI)</th>
-            </tr>
-        </thead>
-        <tbody id="table-body">
-            <!-- Data will be injected here via JavaScript -->
-        </tbody>
-    </table>
+    <div class="table-container">
+        <table id="option-chain-table">
+            <thead>
+                <tr>
+                    <th colspan="10" class="call-head">CALLS (CE)</th>
+                    <th class="strike-head">STRIKE</th>
+                    <th colspan="10" class="put-head">PUTS (PE)</th>
+                </tr>
+                <tr class="sub-header">
+                    <!-- CALLS -->
+                    <th>OI</th>
+                    <th>Chng OI</th>
+                    <th>Volume</th>
+                    <th>IV</th>
+                    <th>LTP</th>
+                    <th>Chng</th>
+                    <th>Bid Qty</th>
+                    <th>Bid Price</th>
+                    <th>Ask Price</th>
+                    <th>Ask Qty</th>
+                    <!-- STRIKE -->
+                    <th>Price</th>
+                    <!-- PUTS -->
+                    <th>Bid Qty</th>
+                    <th>Bid Price</th>
+                    <th>Ask Price</th>
+                    <th>Ask Qty</th>
+                    <th>Chng</th>
+                    <th>LTP</th>
+                    <th>IV</th>
+                    <th>Volume</th>
+                    <th>Chng OI</th>
+                    <th>OI</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- Javascript will inject complete details here -->
+            </tbody>
+        </table>
+    </div>
 
     <script>
+        function fmt(val) {
+            return (val !== undefined && val !== null) ? val.toLocaleString('en-IN') : '-';
+        }
+
+        function fmtColor(val) {
+            if (val === undefined || val === null) return '-';
+            const formatted = val.toLocaleString('en-IN');
+            if (val > 0) return `<span class="pos">+${formatted}</span>`;
+            if (val < 0) return `<span class="neg">${formatted}</span>`;
+            return formatted;
+        }
+
         async function fetchOptionChain() {
-            document.getElementById('status').innerText = "Refreshing data...";
+            document.getElementById('status').innerText = "Refreshing Data...";
             try {
-                // Calls the Python backend running on the same server
                 const response = await fetch('/api/data');
                 const data = await response.json();
                 
                 if (data.error) {
-                    document.getElementById('status').innerText = "Error: " + data.error;
+                    document.getElementById('status').innerText = "Status: " + data.error;
                     return;
                 }
 
                 const records = data.records.data;
                 const tbody = document.getElementById('table-body');
-                tbody.innerHTML = ''; // Clear old data
+                tbody.innerHTML = '';
 
-                // Loop through records and create table rows
                 records.forEach(row => {
-                    const ce = row.CE || {}; // Call data (if it exists)
-                    const pe = row.PE || {}; // Put data (if it exists)
+                    const ce = row.CE || {};
+                    const pe = row.PE || {};
 
                     const tr = document.createElement('tr');
 
                     tr.innerHTML = `
-                        <td class="call-col">${ce.openInterest !== undefined ? ce.openInterest : '-'}</td>
-                        <td class="call-col">${ce.lastPrice !== undefined ? ce.lastPrice : '-'}</td>
+                        <!-- CALL DETAILS -->
+                        <td class="call-col">${fmt(ce.openInterest)}</td>
+                        <td class="call-col">${fmtColor(ce.changeinOpenInterest)}</td>
+                        <td class="call-col">${fmt(ce.totalTradedVolume)}</td>
+                        <td class="call-col">${ce.impliedVolatility ? ce.impliedVolatility.toFixed(2) : '-'}</td>
+                        <td class="call-col" style="font-weight:bold;">${fmt(ce.lastPrice)}</td>
+                        <td class="call-col">${fmtColor(ce.change)}</td>
+                        <td class="call-col">${fmt(ce.buyQuantity1)}</td>
+                        <td class="call-col">${fmt(ce.buyPrice1)}</td>
+                        <td class="call-col">${fmt(ce.sellPrice1)}</td>
+                        <td class="call-col">${fmt(ce.sellQuantity1)}</td>
+
+                        <!-- STRIKE -->
                         <td class="strike-col">${row.strikePrice}</td>
-                        <td class="put-col">${pe.lastPrice !== undefined ? pe.lastPrice : '-'}</td>
-                        <td class="put-col">${pe.openInterest !== undefined ? pe.openInterest : '-'}</td>
+
+                        <!-- PUT DETAILS -->
+                        <td class="put-col">${fmt(pe.buyQuantity1)}</td>
+                        <td class="put-col">${fmt(pe.buyPrice1)}</td>
+                        <td class="put-col">${fmt(pe.sellPrice1)}</td>
+                        <td class="put-col">${fmt(pe.sellQuantity1)}</td>
+                        <td class="put-col">${fmtColor(pe.change)}</td>
+                        <td class="put-col" style="font-weight:bold;">${fmt(pe.lastPrice)}</td>
+                        <td class="put-col">${pe.impliedVolatility ? pe.impliedVolatility.toFixed(2) : '-'}</td>
+                        <td class="put-col">${fmt(pe.totalTradedVolume)}</td>
+                        <td class="put-col">${fmtColor(pe.changeinOpenInterest)}</td>
+                        <td class="put-col">${fmt(pe.openInterest)}</td>
                     `;
                     tbody.appendChild(tr);
                 });
 
                 const now = new Date();
-                document.getElementById('status').innerText = "Last updated: " + now.toLocaleTimeString();
+                document.getElementById('status').innerText = "Live | Last Updated: " + now.toLocaleTimeString();
                 
             } catch (error) {
-                document.getElementById('status').innerText = "Failed to connect to server.";
+                document.getElementById('status').innerText = "Error loading data.";
             }
         }
 
-        // CSV Download Logic
         function downloadCSV() {
             const table = document.getElementById("option-chain-table");
             let csvContent = "";
             for (let row of table.rows) {
                 let rowData = [];
                 for (let cell of row.cells) {
-                    rowData.push('"' + cell.innerText + '"');
+                    rowData.push('"' + cell.innerText.replace(/\n/g, ' ') + '"');
                 }
                 csvContent += rowData.join(",") + "\n";
             }
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.setAttribute("download", "Nifty_Option_Chain.csv");
+            link.setAttribute("download", "Nifty_Option_Chain_Full.csv");
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        // Run immediately when page loads
         fetchOptionChain();
-
-        // Auto-refresh exactly every 3 minutes (180,000 milliseconds)
-        setInterval(fetchOptionChain, 180000);
+        setInterval(fetchOptionChain, 180000); // 3-minute refresh rate
     </script>
 </body>
 </html>

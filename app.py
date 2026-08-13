@@ -1,25 +1,16 @@
 from flask import Flask, jsonify, render_template
-import requests
+from dhanhq import DhanContext, dhanhq
+import os
 
 app = Flask(__name__)
 
-# Create a free account on scraperapi.com to get your key
-SCRAPER_API_KEY = "3c70d6f3305a1162da62fe697e9885ee" 
+# Replace with your actual Dhan Credentials
+CLIENT_ID = "YOUR_DHAN_CLIENT_ID"
+ACCESS_TOKEN = "YOUR_DHAN_ACCESS_TOKEN"
 
-def fetch_nse_data():
-    target_url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
-    
-    # ScraperAPI routes your request through a residential proxy, bypassing Render's IP block
-    proxy_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url={target_url}&render=false"
-    
-    try:
-        response = requests.get(proxy_url, timeout=20)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"Proxy returned status code {response.status_code}"}
-    except Exception as e:
-        return {"error": str(e)}
+# Initialize Dhan API Client
+context = DhanContext(CLIENT_ID, ACCESS_TOKEN)
+dhan = dhanhq(context)
 
 @app.route('/')
 def home():
@@ -27,7 +18,18 @@ def home():
 
 @app.route('/api/data')
 def api_data():
-    return jsonify(fetch_nse_data())
+    try:
+        # Fetch live Nifty 50 Option Chain (under_security_id=13 is NIFTY 50)
+        # Note: Set expiry to the current active expiry date in YYYY-MM-DD format
+        response = dhan.option_chain(
+            under_security_id=13,
+            under_exchange_segment="IDX_I",
+            expiry="2026-08-27"  # Update this to the upcoming weekly/monthly expiry
+        )
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -1,4 +1,4 @@
-NorenRestApiPy==0.0.28
+NorenRestApiPy==0.0.22
 pyotp==2.9.0
 python-dotenv==1.0.1
 Flask==3.0.0

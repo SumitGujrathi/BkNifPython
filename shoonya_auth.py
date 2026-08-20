@@ -1,11 +1,11 @@
 import os
 import hashlib
 import pyotp
+import json
 from NorenRestApiPy.NorenApi import NorenApi
 
 class ShoonyaSessionManager(NorenApi):
     def __init__(self):
-        # NEW ACTIVE ENDPOINTS (Updated by Shoonya)
         super().__init__(
             host='https://api.shoonya.com/NorenWClientAPI/',
             websocket='wss://api.shoonya.com/NorenWSAPI/'
@@ -13,28 +13,37 @@ class ShoonyaSessionManager(NorenApi):
         self.is_logged_in = False
         
     def login_automatically(self):
-        # HARDCODE TEMPORARILY FOR TESTING IF ENV VARS ARE FAILING:
-        # Replace the right-side values with your actual plain-text strings.
-        user_id = os.environ.get("SHOONYA_USER_ID", "FN229754").strip()
-        password = os.environ.get("SHOONYA_PASSWORD", "Sammy@007").strip()
-        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "YY776C6242FXKA33766WUPUZZ2S5H5QJ").strip()
-        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FN229754_U").strip()
-        api_key = os.environ.get("SHOONYA_API_KEY", "82gdJd04q8J0L6Y1gIbq87n4gOboXD6bdb26YXd8LdBnBIBojAIkxGbO0qa1kIOX").strip()
+        user_id = os.environ.get("SHOONYA_USER_ID", "").strip()
+        password = os.environ.get("SHOONYA_PASSWORD", "").strip()
+        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "").strip()
+        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "").strip()
+        api_key = os.environ.get("SHOONYA_API_KEY", "").strip()
         imei = os.environ.get("SHOONYA_IMEI", "123456").strip()
 
+        if not all([user_id, password, totp_secret, vendor_code, api_key]):
+            print("CRITICAL: Missing one or more credentials!")
+            self.is_logged_in = False
+            return False
+
         try:
-            # 1. Generate live TOTP
-            totp = pyotp.TOTP(totp_secret)
+            # Clean TOTP Secret (remove any extra spaces)
+            clean_totp_secret = totp_secret.replace(" ", "").upper()
+            totp = pyotp.TOTP(clean_totp_secret)
             current_totp = totp.now()
 
-            # 2. Compute Hashes
+            # Hash Password (SHA-256)
             pwd_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+            # Hash AppKey: User_ID|API_Key (SHA-256)
             app_key_str = f"{user_id}|{api_key}"
             app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
 
-            print(f"Connecting to Shoonya API for user: {user_id}...")
+            print(f"--- ATTEMPTING SHOONYA LOGIN ---")
+            print(f"User ID: {user_id}")
+            print(f"Vendor Code: {vendor_code}")
+            print(f"Generated TOTP Code: {current_totp}")
 
-            # 3. Authenticate with Shoonya
+            # Send Login Request
             res = self.login(
                 userid=user_id,
                 password=pwd_sha256,
@@ -44,12 +53,14 @@ class ShoonyaSessionManager(NorenApi):
                 imei=imei
             )
 
+            print(f"RAW SHOONYA RESPONSE: {res}")
+
             if res and isinstance(res, dict) and res.get('stat') == 'Ok':
                 print("Shoonya Auto-Login Successful!")
                 self.is_logged_in = True
                 return True
             else:
-                emsg = res.get('emsg', 'Unknown Error') if isinstance(res, dict) else str(res)
+                emsg = res.get('emsg', 'No error message provided by Shoonya') if isinstance(res, dict) else str(res)
                 print(f"Shoonya API Login Rejected: {emsg}")
                 self.is_logged_in = False
                 return False

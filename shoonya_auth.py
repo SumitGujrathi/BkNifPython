@@ -1,12 +1,10 @@
 import os
 import hashlib
 import pyotp
-import logging
 from NorenRestApiPy.NorenApi import NorenApi
 from dotenv import load_dotenv
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
 
 class ShoonyaSessionManager(NorenApi):
     def __init__(self):
@@ -17,37 +15,49 @@ class ShoonyaSessionManager(NorenApi):
         self.is_logged_in = False
         
     def login_automatically(self):
-        user_id = os.environ.get("SHOONYA_USER_ID")
-        password = os.environ.get("SHOONYA_PASSWORD")
-        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET")
-        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE")
-        api_key = os.environ.get("SHOONYA_API_KEY")
-        imei = os.environ.get("SHOONYA_IMEI", "123456")
+        # Fetch environment variables
+        env_vars = {
+            "SHOONYA_USER_ID": os.environ.get("SHOONYA_USER_ID"),
+            "SHOONYA_PASSWORD": os.environ.get("SHOONYA_PASSWORD"),
+            "SHOONYA_TOTP_SECRET": os.environ.get("SHOONYA_TOTP_SECRET"),
+            "SHOONYA_VENDOR_CODE": os.environ.get("SHOONYA_VENDOR_CODE"),
+            "SHOONYA_API_KEY": os.environ.get("SHOONYA_API_KEY"),
+            "SHOONYA_IMEI": os.environ.get("SHOONYA_IMEI", "123456")
+        }
 
-        if not all([user_id, password, totp_secret, vendor_code, api_key]):
-            print("CRITICAL: One or more environment variables are missing in Render!")
+        # Check for missing keys
+        missing_keys = [k for k, v in env_vars.items() if not v]
+        if missing_keys:
+            print(f"CRITICAL: Missing environment variables on Render: {', '.join(missing_keys)}")
             self.is_logged_in = False
             return False
 
+        user_id = env_vars["SHOONYA_USER_ID"].strip()
+        password = env_vars["SHOONYA_PASSWORD"].strip()
+        totp_secret = env_vars["SHOONYA_TOTP_SECRET"].strip()
+        vendor_code = env_vars["SHOONYA_VENDOR_CODE"].strip()
+        api_key = env_vars["SHOONYA_API_KEY"].strip()
+        imei = env_vars["SHOONYA_IMEI"].strip()
+
         try:
-            # Generate live 6-digit TOTP from secret key
-            totp = pyotp.TOTP(totp_secret.strip())
+            # Generate TOTP dynamically
+            totp = pyotp.TOTP(totp_secret)
             current_totp = totp.now()
 
-            # Hash Password and AppKey (User_ID | API_Key)
-            pwd_sha256 = hashlib.sha256(password.strip().encode('utf-8')).hexdigest()
-            app_key_str = f"{user_id.strip()}|{api_key.strip()}"
+            # Generate SHA-256 Hashes
+            pwd_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            app_key_str = f"{user_id}|{api_key}"
             app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
 
-            print(f"Attempting login for User: {user_id}...")
+            print(f"Connecting to Shoonya API for user: {user_id}...")
 
             res = self.login(
-                userid=user_id.strip(),
+                userid=user_id,
                 password=pwd_sha256,
                 twoFA=current_totp,
-                vendor_code=vendor_code.strip(),
+                vendor_code=vendor_code,
                 api_secret=app_key_sha256,
-                imei=imei.strip()
+                imei=imei
             )
 
             if res and res.get('stat') == 'Ok':
@@ -55,13 +65,13 @@ class ShoonyaSessionManager(NorenApi):
                 self.is_logged_in = True
                 return True
             else:
-                error_msg = res.get('emsg', 'Unknown Login Error') if res else 'No response'
-                print(f"Shoonya Auto-Login Failed: {error_msg}")
+                emsg = res.get('emsg', 'Unknown Error') if res else 'No response from server'
+                print(f"Shoonya API Login Rejected: {emsg}")
                 self.is_logged_in = False
                 return False
 
         except Exception as e:
-            print("Error during Shoonya login execution:", str(e))
+            print(f"Exception during Shoonya Login: {str(e)}")
             self.is_logged_in = False
             return False
 

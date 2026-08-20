@@ -8,14 +8,14 @@ load_dotenv()
 
 class ShoonyaSessionManager(NorenApi):
     def __init__(self):
+        # FIX: Removed trailing slashes from host & websocket URLs
         super().__init__(
-            host='https://api.shoonya.com/NorenWST/',
-            websocket='wss://api.shoonya.com/NorenWST/'
+            host='https://api.shoonya.com/NorenWST',
+            websocket='wss://api.shoonya.com/NorenWST'
         )
         self.is_logged_in = False
         
     def login_automatically(self):
-        # Fetch environment variables
         env_vars = {
             "SHOONYA_USER_ID": os.environ.get("SHOONYA_USER_ID"),
             "SHOONYA_PASSWORD": os.environ.get("SHOONYA_PASSWORD"),
@@ -25,7 +25,6 @@ class ShoonyaSessionManager(NorenApi):
             "SHOONYA_IMEI": os.environ.get("SHOONYA_IMEI", "123456")
         }
 
-        # Check for missing keys
         missing_keys = [k for k, v in env_vars.items() if not v]
         if missing_keys:
             print(f"CRITICAL: Missing environment variables on Render: {', '.join(missing_keys)}")
@@ -40,11 +39,11 @@ class ShoonyaSessionManager(NorenApi):
         imei = env_vars["SHOONYA_IMEI"].strip()
 
         try:
-            # Generate TOTP dynamically
+            # Generate 6-digit TOTP
             totp = pyotp.TOTP(totp_secret)
             current_totp = totp.now()
 
-            # Generate SHA-256 Hashes
+            # Hash Password and AppKey using SHA-256
             pwd_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
             app_key_str = f"{user_id}|{api_key}"
             app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
@@ -65,7 +64,7 @@ class ShoonyaSessionManager(NorenApi):
                 self.is_logged_in = True
                 return True
             else:
-                emsg = res.get('emsg', 'Unknown Error') if res else 'No response from server'
+                emsg = res.get('emsg', 'Unknown Error') if isinstance(res, dict) else str(res)
                 print(f"Shoonya API Login Rejected: {emsg}")
                 self.is_logged_in = False
                 return False

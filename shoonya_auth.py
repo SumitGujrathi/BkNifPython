@@ -4,7 +4,6 @@ import pyotp
 from NorenRestApiPy.NorenApi import NorenApi
 from dotenv import load_dotenv
 
-# Load local .env file during development (ignored in Render production)
 load_dotenv()
 
 class ShoonyaSessionManager(NorenApi):
@@ -15,7 +14,6 @@ class ShoonyaSessionManager(NorenApi):
         )
         
     def login_automatically(self):
-        # 1. Fetch credentials securely from environment variables
         user_id = os.environ.get("SHOONYA_USER_ID")
         password = os.environ.get("SHOONYA_PASSWORD")
         totp_secret = os.environ.get("SHOONYA_TOTP_SECRET")
@@ -27,16 +25,15 @@ class ShoonyaSessionManager(NorenApi):
             print("Error: Missing required environment variables!")
             return False
 
-        # 2. Generate live 6-digit TOTP code dynamically
+        # Generate live 6-digit TOTP
         totp = pyotp.TOTP(totp_secret)
         current_totp = totp.now()
 
-        # 3. Calculate SHA-256 Hashes required by Shoonya OMS
+        # Generate SHA-256 Hashes required by Shoonya OMS
         pwd_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
         app_key_str = user_id + "|" + api_key
         app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
 
-        # 4. Authenticate session
         res = self.login(
             userid=user_id,
             password=pwd_sha256,
@@ -53,5 +50,4 @@ class ShoonyaSessionManager(NorenApi):
             print("Shoonya Auto-Login Failed:", res)
             return False
 
-# Export global instance
 shoonya_api = ShoonyaSessionManager()

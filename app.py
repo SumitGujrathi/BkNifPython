@@ -4,10 +4,10 @@ from shoonya_auth import shoonya_api
 app = Flask(__name__)
 
 def ensure_authenticated():
-    """Validates session health; automatically logs back in if token expired."""
+    """Checks session health; triggers auto-login if token expired."""
     limits = shoonya_api.get_limits()
     if not limits or limits.get('stat') != 'Ok':
-        print("Session expired. Triggering silent background login...")
+        print("Session expired or uninitialized. Auto-logging in...")
         return shoonya_api.login_automatically()
     return True
 
@@ -18,16 +18,15 @@ def home():
 @app.route('/api/data')
 def api_data():
     try:
-        # Guarantee session is live
         if not ensure_authenticated():
-            return jsonify({"error": "Authentication with Shoonya API failed"})
+            return jsonify({"error": "Shoonya Authentication Failed. Check environment variables."})
 
-        # Fetch live Nifty Option Chain from NFO exchange
+        # Fetch option chain for NIFTY near strike price 24000
         response = shoonya_api.get_option_chain(
             exchange='NFO',
             tradingsymbol='NIFTY',
-            strikeprice=24000.0,  # Center strike price
-            count=10              # Number of strike prices on each side (ITM/OTM)
+            strikeprice=24000.0,
+            count=10
         )
         
         return jsonify(response)

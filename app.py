@@ -4,10 +4,8 @@ from shoonya_auth import shoonya_api
 app = Flask(__name__)
 
 def ensure_authenticated():
-    """Checks session health; triggers auto-login if token expired."""
-    limits = shoonya_api.get_limits()
-    if not limits or limits.get('stat') != 'Ok':
-        print("Session expired or uninitialized. Auto-logging in...")
+    if not shoonya_api.is_logged_in:
+        print("Session uninitialized or invalid. Attempting login...")
         return shoonya_api.login_automatically()
     return True
 
@@ -19,9 +17,10 @@ def home():
 def api_data():
     try:
         if not ensure_authenticated():
-            return jsonify({"error": "Shoonya Authentication Failed. Check environment variables."})
+            return jsonify({
+                "error": "Shoonya Authentication Failed. Check Render Logs to see the exact login error message."
+            })
 
-        # Fetch option chain for NIFTY near strike price 24000
         response = shoonya_api.get_option_chain(
             exchange='NFO',
             tradingsymbol='NIFTY',
@@ -29,6 +28,9 @@ def api_data():
             count=10
         )
         
+        if response and response.get('stat') == 'Not_Ok':
+            return jsonify({"error": response.get('emsg', 'Failed to fetch option chain')})
+
         return jsonify(response)
     except Exception as e:
         return jsonify({"error": str(e)})

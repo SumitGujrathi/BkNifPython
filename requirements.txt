@@ -2,5 +2,6 @@ NorenRestApiPy==0.0.22
 pyotp==2.9.0
 python-dotenv==1.0.1
 requests==2.31.0
+websocket-client==1.8.0
 Flask==3.0.0
 gunicorn==21.2.0

@@ -1,4 +1,3 @@
-import sys
 from flask import Flask, jsonify, render_template
 from shoonya_auth import shoonya_api
 
@@ -17,7 +16,7 @@ def home():
 @app.route('/api/data')
 def api_data():
     try:
-        print("API endpoint called by user/browser...", flush=True)
+        print("API endpoint called by browser...", flush=True)
         if not ensure_authenticated():
             return jsonify({
                 "error": "Shoonya Authentication Failed. Check Render logs for RAW SHOONYA RESPONSE."

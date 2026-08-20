@@ -3,59 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nifty Live Option Chain (Dhan API)</title>
+    <title>Nifty Live Option Chain (Shoonya API)</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 0; padding: 15px; }
+        body { font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; margin: 0; }
         h2 { text-align: center; color: #212529; }
-        .info-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        #status { font-weight: 500; color: #495057; }
-        .btn-download { background-color: #198754; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-download:hover { background-color: #157347; }
-        
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        button { padding: 8px 16px; background-color: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #157347; }
         .table-container { overflow-x: auto; max-height: 80vh; background: white; border: 1px solid #dee2e6; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: right; white-space: nowrap; }
-        
-        th, td { padding: 6px 8px; border: 1px solid #e9ecef; }
-        thead th { position: sticky; top: 0; z-index: 2; background-color: #212529; color: white; text-align: center; }
-        
-        .call-head { background-color: #198754 !important; }
-        .put-head { background-color: #dc3545 !important; }
-        .strike-head { background-color: #ffc107 !important; color: black !important; }
-        
-        .call-col { background-color: #f1f9f5; }
-        .put-col { background-color: #fdf2f2; }
-        .strike-col { font-weight: bold; text-align: center; background-color: #fff8e1; position: sticky; left: 0; z-index: 1; }
+        table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+        th, td { padding: 8px; border: 1px solid #e9ecef; }
+        th { background-color: #212529; color: white; }
+        .call-col { background-color: #e8f5e9; }
+        .put-col { background-color: #ffebee; }
+        .strike-col { font-weight: bold; background-color: #fff9c4; }
     </style>
 </head>
 <body>
 
-    <h2>Nifty 50 Option Chain (Live via Dhan API)</h2>
+    <h2>Nifty Option Chain (Shoonya Automated API)</h2>
     
-    <div class="info-bar">
-        <span id="status">Connecting to Dhan API...</span>
-        <button class="btn-download" onclick="downloadCSV()">Export CSV</button>
+    <div class="controls">
+        <span id="status">Connecting to server...</span>
+        <button onclick="downloadCSV()">Export CSV</button>
     </div>
 
     <div class="table-container">
         <table id="option-chain-table">
             <thead>
                 <tr>
-                    <th colspan="5" class="call-head">CALLS (CE)</th>
-                    <th class="strike-head">STRIKE</th>
-                    <th colspan="5" class="put-head">PUTS (PE)</th>
+                    <th colspan="3">CALLS (CE)</th>
+                    <th>STRIKE</th>
+                    <th colspan="3">PUTS (PE)</th>
                 </tr>
                 <tr>
-                    <th>OI</th>
-                    <th>Volume</th>
-                    <th>IV</th>
-                    <th>LTP</th>
-                    <th>Chng</th>
-                    <th>Price</th>
-                    <th>Chng</th>
-                    <th>LTP</th>
-                    <th>IV</th>
-                    <th>Volume</th>
-                    <th>OI</th>
+                    <th>Trading Symbol</th>
+                    <th>Token</th>
+                    <th>LTP / Price</th>
+                    <th>Strike Price</th>
+                    <th>LTP / Price</th>
+                    <th>Token</th>
+                    <th>Trading Symbol</th>
                 </tr>
             </thead>
             <tbody id="table-body">
@@ -65,59 +53,40 @@
     </div>
 
     <script>
-        function fmt(val) {
-            return (val !== undefined && val !== null) ? val.toLocaleString('en-IN') : '-';
-        }
-
         async function fetchOptionChain() {
             document.getElementById('status').innerText = "Refreshing Data...";
             try {
                 const response = await fetch('/api/data');
                 const result = await response.json();
                 
-                if (result.status === "error" || !result.data) {
-                    document.getElementById('status').innerText = "Error: " + (result.message || "Failed to parse data");
+                if (result.error) {
+                    document.getElementById('status').innerText = "Status: " + result.error;
                     return;
                 }
 
-                const ocData = result.data.oc || {};
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
-                // Loop through strike prices provided by Dhan API
-                Object.keys(ocData).forEach(strike => {
-                    const row = ocData[strike];
-                    const ce = row.ce || {};
-                    const pe = row.pe || {};
-
-                    const tr = document.createElement('tr');
-
-                    tr.innerHTML = `
-                        <!-- CALLS -->
-                        <td class="call-col">${fmt(ce.oi)}</td>
-                        <td class="call-col">${fmt(ce.volume)}</td>
-                        <td class="call-col">${ce.iv ? ce.iv.toFixed(2) : '-'}</td>
-                        <td class="call-col" style="font-weight:bold;">${fmt(ce.last_price)}</td>
-                        <td class="call-col">${fmt(ce.change)}</td>
-
-                        <!-- STRIKE -->
-                        <td class="strike-col">${strike}</td>
-
-                        <!-- PUTS -->
-                        <td class="put-col">${fmt(pe.change)}</td>
-                        <td class="put-col" style="font-weight:bold;">${fmt(pe.last_price)}</td>
-                        <td class="put-col">${pe.iv ? pe.iv.toFixed(2) : '-'}</td>
-                        <td class="put-col">${fmt(pe.volume)}</td>
-                        <td class="put-col">${fmt(pe.oi)}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                if (result.values) {
+                    result.values.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td class="call-col">${item.tsym || '-'}</td>
+                            <td class="call-col">${item.token || '-'}</td>
+                            <td class="call-col">${item.lp || '-'}</td>
+                            <td class="strike-col">${item.strprc || item.strikeprice || '-'}</td>
+                            <td class="put-col">${item.lp || '-'}</td>
+                            <td class="put-col">${item.token || '-'}</td>
+                            <td class="put-col">${item.tsym || '-'}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
 
                 const now = new Date();
                 document.getElementById('status').innerText = "Live | Last Updated: " + now.toLocaleTimeString();
-                
             } catch (error) {
-                document.getElementById('status').innerText = "Server communication error.";
+                document.getElementById('status').innerText = "Server connection failed.";
             }
         }
 
@@ -127,21 +96,21 @@
             for (let row of table.rows) {
                 let rowData = [];
                 for (let cell of row.cells) {
-                    rowData.push('"' + cell.innerText.replace(/\n/g, ' ') + '"');
+                    rowData.push('"' + cell.innerText + '"');
                 }
                 csvContent += rowData.join(",") + "\n";
             }
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.setAttribute("download", "Nifty_Option_Chain_Dhan.csv");
+            link.setAttribute("download", "Nifty_Option_Chain.csv");
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
         fetchOptionChain();
-        setInterval(fetchOptionChain, 180000); // 3-minute auto refresh
+        setInterval(fetchOptionChain, 180000); // Refresh every 3 mins
     </script>
 </body>
 </html>

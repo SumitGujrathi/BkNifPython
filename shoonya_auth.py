@@ -16,10 +16,10 @@ class ShoonyaSessionManager(NorenApi):
         # HARDCODE TEMPORARILY FOR TESTING IF ENV VARS ARE FAILING:
         # Replace the right-side values with your actual plain-text strings.
         user_id = os.environ.get("SHOONYA_USER_ID", "FN229754").strip()
-        password = os.environ.get("SHOONYA_PASSWORD", "YOUR_PLAIN_PASSWORD").strip()
-        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "YOUR_32_CHAR_TOTP_SECRET").strip()
+        password = os.environ.get("SHOONYA_PASSWORD", "Sammy@007").strip()
+        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "YY776C6242FXKA33766WUPUZZ2S5H5QJ").strip()
         vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FN229754_VC").strip()
-        api_key = os.environ.get("SHOONYA_API_KEY", "YOUR_API_KEY_FROM_PRISM").strip()
+        api_key = os.environ.get("SHOONYA_API_KEY", "82gdJd04q8J0L6Y1gIbq87n4gOboXD6bdb26YXd8LdBnBIBojAIkxGbO0qa1kIOX").strip()
         imei = os.environ.get("SHOONYA_IMEI", "123456").strip()
 
         try:

@@ -18,7 +18,7 @@ class ShoonyaSessionManager(NorenApi):
         user_id = os.environ.get("SHOONYA_USER_ID", "FN229754").strip()
         password = os.environ.get("SHOONYA_PASSWORD", "Sammy@007").strip()
         totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "YY776C6242FXKA33766WUPUZZ2S5H5QJ").strip()
-        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FN229754_VC").strip()
+        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FN229754_U").strip()
         api_key = os.environ.get("SHOONYA_API_KEY", "82gdJd04q8J0L6Y1gIbq87n4gOboXD6bdb26YXd8LdBnBIBojAIkxGbO0qa1kIOX").strip()
         imei = os.environ.get("SHOONYA_IMEI", "123456").strip()
 

@@ -1,16 +1,15 @@
 from flask import Flask, jsonify, render_template
-from dhanhq import DhanContext, dhanhq
-import os
+from shoonya_auth import shoonya_api
 
 app = Flask(__name__)
 
-# Replace with your actual Dhan Credentials
-CLIENT_ID = "YOUR_DHAN_CLIENT_ID"
-ACCESS_TOKEN = "YOUR_DHAN_ACCESS_TOKEN"
-
-# Initialize Dhan API Client
-context = DhanContext(CLIENT_ID, ACCESS_TOKEN)
-dhan = dhanhq(context)
+def ensure_authenticated():
+    """Validates session health; automatically logs back in if token expired."""
+    limits = shoonya_api.get_limits()
+    if not limits or limits.get('stat') != 'Ok':
+        print("Session expired. Triggering silent background login...")
+        return shoonya_api.login_automatically()
+    return True
 
 @app.route('/')
 def home():
@@ -19,17 +18,22 @@ def home():
 @app.route('/api/data')
 def api_data():
     try:
-        # Fetch live Nifty 50 Option Chain (under_security_id=13 is NIFTY 50)
-        # Note: Set expiry to the current active expiry date in YYYY-MM-DD format
-        response = dhan.option_chain(
-            under_security_id=13,
-            under_exchange_segment="IDX_I",
-            expiry="2026-08-27"  # Update this to the upcoming weekly/monthly expiry
+        # Guarantee session is live
+        if not ensure_authenticated():
+            return jsonify({"error": "Authentication with Shoonya API failed"})
+
+        # Fetch live Nifty Option Chain from NFO exchange
+        response = shoonya_api.get_option_chain(
+            exchange='NFO',
+            tradingsymbol='NIFTY',
+            strikeprice=24000.0,  # Center strike price
+            count=10              # Number of strike prices on each side (ITM/OTM)
         )
         
         return jsonify(response)
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+        return jsonify({"error": str(e)})
 
 if __name__ == '__main__':
+    shoonya_api.login_automatically()
     app.run(host='0.0.0.0', port=5000)

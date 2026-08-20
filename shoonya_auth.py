@@ -2,54 +2,39 @@ import os
 import hashlib
 import pyotp
 from NorenRestApiPy.NorenApi import NorenApi
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class ShoonyaSessionManager(NorenApi):
     def __init__(self):
-        # FIX: Removed trailing slashes from host & websocket URLs
+        # NEW ACTIVE ENDPOINTS (Updated by Shoonya)
         super().__init__(
-            host='https://api.shoonya.com/NorenWST',
-            websocket='wss://api.shoonya.com/NorenWST'
+            host='https://api.shoonya.com/NorenWClientAPI/',
+            websocket='wss://api.shoonya.com/NorenWSAPI/'
         )
         self.is_logged_in = False
         
     def login_automatically(self):
-        env_vars = {
-            "SHOONYA_USER_ID": os.environ.get("SHOONYA_USER_ID"),
-            "SHOONYA_PASSWORD": os.environ.get("SHOONYA_PASSWORD"),
-            "SHOONYA_TOTP_SECRET": os.environ.get("SHOONYA_TOTP_SECRET"),
-            "SHOONYA_VENDOR_CODE": os.environ.get("SHOONYA_VENDOR_CODE"),
-            "SHOONYA_API_KEY": os.environ.get("SHOONYA_API_KEY"),
-            "SHOONYA_IMEI": os.environ.get("SHOONYA_IMEI", "123456")
-        }
-
-        missing_keys = [k for k, v in env_vars.items() if not v]
-        if missing_keys:
-            print(f"CRITICAL: Missing environment variables on Render: {', '.join(missing_keys)}")
-            self.is_logged_in = False
-            return False
-
-        user_id = env_vars["SHOONYA_USER_ID"].strip()
-        password = env_vars["SHOONYA_PASSWORD"].strip()
-        totp_secret = env_vars["SHOONYA_TOTP_SECRET"].strip()
-        vendor_code = env_vars["SHOONYA_VENDOR_CODE"].strip()
-        api_key = env_vars["SHOONYA_API_KEY"].strip()
-        imei = env_vars["SHOONYA_IMEI"].strip()
+        # HARDCODE TEMPORARILY FOR TESTING IF ENV VARS ARE FAILING:
+        # Replace the right-side values with your actual plain-text strings.
+        user_id = os.environ.get("SHOONYA_USER_ID", "FN229754").strip()
+        password = os.environ.get("SHOONYA_PASSWORD", "YOUR_PLAIN_PASSWORD").strip()
+        totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "YOUR_32_CHAR_TOTP_SECRET").strip()
+        vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FN229754_VC").strip()
+        api_key = os.environ.get("SHOONYA_API_KEY", "YOUR_API_KEY_FROM_PRISM").strip()
+        imei = os.environ.get("SHOONYA_IMEI", "123456").strip()
 
         try:
-            # Generate 6-digit TOTP
+            # 1. Generate live TOTP
             totp = pyotp.TOTP(totp_secret)
             current_totp = totp.now()
 
-            # Hash Password and AppKey using SHA-256
+            # 2. Compute Hashes
             pwd_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
             app_key_str = f"{user_id}|{api_key}"
             app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
 
             print(f"Connecting to Shoonya API for user: {user_id}...")
 
+            # 3. Authenticate with Shoonya
             res = self.login(
                 userid=user_id,
                 password=pwd_sha256,
@@ -59,7 +44,7 @@ class ShoonyaSessionManager(NorenApi):
                 imei=imei
             )
 
-            if res and res.get('stat') == 'Ok':
+            if res and isinstance(res, dict) and res.get('stat') == 'Ok':
                 print("Shoonya Auto-Login Successful!")
                 self.is_logged_in = True
                 return True

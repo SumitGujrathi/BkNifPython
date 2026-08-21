@@ -1,8 +1,6 @@
 import os
 import hashlib
 import pyotp
-import json
-import requests
 from NorenRestApiPy.NorenApi import NorenApi
 from dotenv import load_dotenv
 
@@ -10,13 +8,13 @@ load_dotenv()
 
 class ShoonyaSessionManager(NorenApi):
     def __init__(self):
-        # We use NorenWClientTP/ which is the standard Shoonya retail endpoint
         super().__init__(
             host='https://api.shoonya.com/NorenWClientTP/',
             websocket='wss://api.shoonya.com/NorenWSTP/'
         )
         self.is_logged_in = False
 
+        # Keep the User-Agent header to prevent Cloudflare blocks
         for attr_name in ['_session', '_NorenApi__session', 'session']:
             session_obj = getattr(self, attr_name, None)
             if session_obj and hasattr(session_obj, 'headers'):
@@ -29,11 +27,7 @@ class ShoonyaSessionManager(NorenApi):
         password = os.environ.get("SHOONYA_PASSWORD", "").strip()
         totp_secret = os.environ.get("SHOONYA_TOTP_SECRET", "").strip()
         
-        # Test with FA_VC first. If 404/Invalid, we change to your specific User ID VC
         vendor_code = os.environ.get("SHOONYA_VENDOR_CODE", "FA_VC").strip()
-        if not vendor_code:
-            vendor_code = "FA_VC"
-
         api_key = os.environ.get("SHOONYA_API_KEY", "").strip()
         imei = os.environ.get("SHOONYA_IMEI", "123456").strip()
 
@@ -51,31 +45,7 @@ class ShoonyaSessionManager(NorenApi):
             app_key_str = f"{user_id}|{api_key}"
             app_key_sha256 = hashlib.sha256(app_key_str.encode('utf-8')).hexdigest()
 
-            print(f"--- ATTEMPTING SHOONYA LOGIN ---", flush=True)
-            print(f"User ID: {user_id}", flush=True)
-            print(f"Vendor Code: {vendor_code}", flush=True)
-            print(f"Generated TOTP Code: {current_totp}", flush=True)
-
-            # =========================================================
-            # DIAGNOSTIC: Direct HTTP Probe to see Cloudflare/Server block
-            # =========================================================
-            print("--- RUNNING DIRECT HTTP PROBE ---", flush=True)
-            probe_payload = {
-                "uid": user_id, "pwd": pwd_sha256, "factor2": current_totp,
-                "vc": vendor_code, "appkey": app_key_sha256, "imei": imei, "source": "API"
-            }
-            try:
-                probe_res = requests.post(
-                    "https://api.shoonya.com/NorenWClientTP/QuickAuth",
-                    data="jData=" + json.dumps(probe_payload),
-                    headers={"User-Agent": "Mozilla/5.0"}
-                )
-                print(f"PROBE HTTP STATUS: {probe_res.status_code}", flush=True)
-                print(f"PROBE RAW TEXT: {probe_res.text[:300]}", flush=True)
-            except Exception as probe_err:
-                print(f"PROBE NETWORK FAILURE: {str(probe_err)}", flush=True)
-            print("---------------------------------", flush=True)
-            # =========================================================
+            print(f"Connecting to Shoonya API for user: {user_id}...", flush=True)
 
             res = self.login(
                 userid=user_id,
@@ -86,14 +56,13 @@ class ShoonyaSessionManager(NorenApi):
                 imei=imei
             )
 
-            print(f"SDK RESPONSE: {res}", flush=True)
-
+            # If Shoonya is down (502), 'res' will be None
             if res and isinstance(res, dict) and res.get('stat') == 'Ok':
                 print("Shoonya Auto-Login Successful!", flush=True)
                 self.is_logged_in = True
                 return True
             else:
-                emsg = res.get('emsg', 'No JSON parsed from Shoonya') if isinstance(res, dict) else str(res)
+                emsg = res.get('emsg', 'Shoonya servers returned an invalid response (Likely offline/502)') if isinstance(res, dict) else 'Shoonya server is offline or returned an error page.'
                 print(f"Shoonya API Login Rejected: {emsg}", flush=True)
                 self.is_logged_in = False
                 return False
